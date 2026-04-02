@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "apex": {
+      "command": "node",
+      "args": ["dist/mcp/server.js"],
+      "env": {
+        "APEX_DATA_DIR": ".apex-data",
+        "APEX_GLOBAL_DIR": "~/.apex"
+      }
+    }
+  }
+}

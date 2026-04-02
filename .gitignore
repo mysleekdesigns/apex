@@ -4,4 +4,3 @@ dist/
 *.db
 .apex-data/
 .env
-.mcp.json
