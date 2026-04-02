@@ -494,35 +494,35 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Micro-level data assembler** (`src/reflection/micro.ts`)
-  - [ ] Retrieve single failed episode + any reference/goal data
-  - [ ] Format trajectory as step-by-step action log for Claude to analyze
-  - [ ] Include contrastive data when both success and failure trajectories exist for same task
-  - [ ] Return structured prompt-ready data (Claude does the actual analysis)
+- [x] **Micro-level data assembler** (`src/reflection/micro.ts`)
+  - [x] Retrieve single failed episode + any reference/goal data
+  - [x] Format trajectory as step-by-step action log for Claude to analyze
+  - [x] Include contrastive data when both success and failure trajectories exist for same task
+  - [x] Return structured prompt-ready data (Claude does the actual analysis)
 
-- [ ] **Meso-level data assembler** (`src/reflection/meso.ts`)
-  - [ ] Group episodes by task type / similarity
-  - [ ] Retrieve cross-attempt data for the same task type
-  - [ ] Include existing error taxonomy for Claude to extend
-  - [ ] Format episode clusters for pattern detection (Claude does the reasoning)
+- [x] **Meso-level data assembler** (`src/reflection/meso.ts`)
+  - [x] Group episodes by task type / similarity
+  - [x] Retrieve cross-attempt data for the same task type
+  - [x] Include existing error taxonomy for Claude to extend
+  - [x] Format episode clusters for pattern detection (Claude does the reasoning)
 
-- [ ] **Macro-level data assembler** (`src/reflection/macro.ts`)
-  - [ ] Cluster episodes by error type tags (from stored reflections)
-  - [ ] Retrieve cross-task episode groups sharing failure patterns
-  - [ ] Format clustered data for transferable insight extraction (Claude does the reasoning)
+- [x] **Macro-level data assembler** (`src/reflection/macro.ts`)
+  - [x] Cluster episodes by error type tags (from stored reflections)
+  - [x] Retrieve cross-task episode groups sharing failure patterns
+  - [x] Format clustered data for transferable insight extraction (Claude does the reasoning)
 
-- [ ] **Reflection storage** (`src/reflection/store.ts`)
-  - [ ] Accept structured reflection from Claude (insights, error types, strategies)
-  - [ ] Merge into Semantic Memory with proper heat scoring
-  - [ ] Update error taxonomy index
-  - [ ] Deduplicate against existing reflections (content hash + similarity check)
-  - [ ] Priority scoring of reflections by actionability tags
+- [x] **Reflection storage** (`src/reflection/store.ts`)
+  - [x] Accept structured reflection from Claude (insights, error types, strategies)
+  - [x] Merge into Semantic Memory with proper heat scoring
+  - [x] Update error taxonomy index
+  - [x] Deduplicate against existing reflections (content hash + similarity check)
+  - [x] Priority scoring of reflections by actionability tags
 
-- [ ] **Reflection coordinator** (`src/reflection/coordinator.ts`)
-  - [ ] Orchestrate the get -> (Claude reasons) -> store flow
-  - [ ] Track which episodes have been reflected on (avoid re-processing)
-  - [ ] Incremental taxonomy index update on new reflections
-  - [ ] Metrics: reflection count, taxonomy size, insight density
+- [x] **Reflection coordinator** (`src/reflection/coordinator.ts`)
+  - [x] Orchestrate the get -> (Claude reasons) -> store flow
+  - [x] Track which episodes have been reflected on (avoid re-processing)
+  - [x] Incremental taxonomy index update on new reflections
+  - [x] Metrics: reflection count, taxonomy size, insight density
 
 ---
 

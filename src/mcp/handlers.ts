@@ -1,8 +1,8 @@
 /**
  * APEX MCP Tool Handlers
  *
- * Connects MCP tool calls to the memory subsystem.
- * Handlers that depend on subsystems not yet built (reflection, planning,
+ * Connects MCP tool calls to the memory and reflection subsystems.
+ * Handlers that depend on subsystems not yet built (planning,
  * curriculum, evolution) remain stubbed.
  */
 
@@ -12,6 +12,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { Episode, Action, Outcome, Reflection, Snapshot } from '../types.js';
 import { generateId } from '../types.js';
 import { MemoryManager } from '../memory/manager.js';
+import { ReflectionCoordinator } from '../reflection/coordinator.js';
 import { FileStore } from '../utils/file-store.js';
 import { Logger } from '../utils/logger.js';
 import { scanProject } from '../utils/project-scanner.js';
@@ -47,6 +48,7 @@ function fail(message: string): CallToolResult {
 // ---------------------------------------------------------------------------
 
 let memoryManager: MemoryManager | null = null;
+let reflectionCoordinator: ReflectionCoordinator | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -69,6 +71,22 @@ async function getOrCreateManager(projectPath?: string): Promise<MemoryManager> 
   });
   await memoryManager.init();
   return memoryManager;
+}
+
+async function getOrCreateReflectionCoordinator(projectPath?: string): Promise<ReflectionCoordinator> {
+  if (reflectionCoordinator) return reflectionCoordinator;
+
+  const root = projectPath ?? process.cwd();
+  const mgr = await getOrCreateManager(root);
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  reflectionCoordinator = new ReflectionCoordinator({
+    fileStore: store,
+    semanticMemory: mgr.getSemanticMemory(),
+    logger,
+  });
+  return reflectionCoordinator;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,29 +180,40 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleReflectGet(args: Record<string, unknown>): Promise<CallToolResult> {
-  // Phase 3 will implement the full reflection data assembly.
-  // For now, return recent episodes from episodic memory as raw data.
-  const scope = args.scope as string;
-  const limit = (args.limit as number) ?? 20;
-  const mgr = await getOrCreateManager();
+  const level = args.level as string;
+  const coordinator = await getOrCreateReflectionCoordinator();
 
-  if (scope === 'recent') {
-    const results = await mgr.recall('recent episodes', limit);
-    return ok({
-      status: 'ok',
-      scope,
-      episodeCount: results.length,
-      episodes: results.map((r) => ({
-        id: r.entry.id,
-        content: r.entry.content,
-        tier: r.sourceTier,
-        confidence: r.entry.confidence,
-      })),
-      message: 'Phase 3 will add structured micro/meso/macro reflection data assembly.',
-    });
+  if (level === 'micro') {
+    const episodeId = args.episodeId as string;
+    if (!episodeId) return fail('Missing required parameter: episodeId (for micro-level reflection)');
+    const data = await coordinator.getMicroData(episodeId);
+    return ok({ status: 'ok', ...data });
   }
 
-  return stub('apex_reflect_get', args);
+  if (level === 'meso') {
+    const taskQuery = args.taskQuery as string;
+    if (!taskQuery) return fail('Missing required parameter: taskQuery (for meso-level reflection)');
+    const limit = (args.limit as number) ?? 20;
+    const data = await coordinator.getMesoData(taskQuery, limit);
+    return ok({ status: 'ok', ...data });
+  }
+
+  if (level === 'macro') {
+    const errorTypes = (args.errorTypes as string[]) ?? undefined;
+    const limitPerCluster = (args.limitPerCluster as number) ?? undefined;
+    const data = await coordinator.getMacroData(errorTypes, limitPerCluster);
+    return ok({ status: 'ok', ...data });
+  }
+
+  // Fallback: return metrics and unreflected episode count
+  const metrics = await coordinator.metrics();
+  const unreflected = await coordinator.getUnreflectedEpisodes();
+  return ok({
+    status: 'ok',
+    metrics,
+    unreflectedEpisodeCount: unreflected.length,
+    hint: 'Specify level: "micro" (+ episodeId), "meso" (+ taskQuery), or "macro" (+ optional errorTypes) for structured reflection data.',
+  });
 }
 
 async function handleReflectStore(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -192,34 +221,25 @@ async function handleReflectStore(args: Record<string, unknown>): Promise<CallTo
   const content = args.content as string;
   if (!level || !content) return fail('Missing required parameters: level, content');
 
-  const reflection: Reflection = {
-    id: generateId(),
+  const coordinator = await getOrCreateReflectionCoordinator();
+
+  const result = await coordinator.storeReflection({
     level,
     content,
-    errorTypes: (args.errorTypes as string[]) ?? [],
-    actionableInsights: (args.actionableInsights as string[]) ?? [],
-    sourceEpisodes: (args.sourceEpisodes as string[]) ?? [],
-    timestamp: Date.now(),
-    confidence: 0.7,
-  };
-
-  const mgr = await getOrCreateManager();
-
-  // Store reflection content in semantic memory
-  await mgr.addToSemantic(
-    `[Reflection:${level}] ${content}`,
-    { confidence: reflection.confidence },
-  );
-
-  // Store the full reflection object
-  const store = new FileStore(getProjectDataPath(process.cwd()));
-  await store.write('reflections', reflection.id, reflection);
+    errorTypes: (args.errorTypes as string[]) ?? undefined,
+    actionableInsights: (args.actionableInsights as string[]) ?? undefined,
+    sourceEpisodes: (args.sourceEpisodes as string[]) ?? undefined,
+    confidence: (args.confidence as number) ?? undefined,
+  });
 
   return ok({
     status: 'ok',
-    reflectionId: reflection.id,
+    reflectionId: result.reflection.id,
     level,
-    storedInsights: reflection.actionableInsights.length,
+    isDuplicate: result.isDuplicate,
+    actionabilityScore: Math.round(result.actionabilityScore * 1000) / 1000,
+    storedInsights: result.reflection.actionableInsights.length,
+    semanticEntryId: result.semanticEntryId,
   });
 }
 
