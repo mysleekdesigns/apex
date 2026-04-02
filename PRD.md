@@ -3,7 +3,7 @@
 
 **Version:** 0.8.0
 **Date:** 2026-04-02
-**Status:** Phase 7 Complete — Cross-Project Learning
+**Status:** Phase 8 Complete — Hooks, CLAUDE.md & E2E Integration
 
 ---
 
@@ -49,7 +49,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **5** | Curriculum & Experience Replay | ✅ **Complete** | Replay buffer, difficulty estimator, curriculum generator, skill extractor |
 | **6** | Evolution Engine | ✅ **Complete** | Self-evaluation, knowledge distillation, metrics |
 | **7** | Cross-Project Learning | ✅ **Complete** | Global store, skill promotion, cross-project query, portability, project similarity index |
-| **8** | Hooks, CLAUDE.md & E2E Integration | 📋 Not started | Hooks, CLAUDE.md effectiveness tracking, smoke tests |
+| **8** | Hooks, CLAUDE.md & E2E Integration | ✅ **Complete** | CLAUDE.md contextual instructions, .mcp.json config, hooks guide, effectiveness tracker, E2E smoke tests |
 | **9** | Testing & Hardening | 📋 Not started | Unit tests, integration tests, benchmarks |
 | **10** | Advanced Features (Post-MVP) | 📋 Not started | Foresight reflection, multi-agent, tool creation |
 | **11** | Team Learning & GitHub Sharing | 📋 Not started | `.apex-shared/`, PR-based skill proposals, team memory tier |
@@ -688,38 +688,38 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **CLAUDE.md authoring** (contextual, not just a list of tools)
-  - [ ] **On session start:** "Call `apex_recall` with a summary of what you're about to work on"
-  - [ ] **On encountering an error:** "Before debugging, call `apex_recall` with the error message — you may have seen this before"
-  - [ ] **After fixing a tricky bug:** "Call `apex_record` with what the bug was, what you tried, and what worked"
-  - [ ] **Before writing a new module:** "Call `apex_skills` to check for relevant patterns you've learned"
-  - [ ] **On task completion:** "Call `apex_record` with the outcome. If something surprising happened, call `apex_reflect_get` and analyze it"
-  - [ ] **On repeated failure:** "Call `apex_reflect_get('meso')` to see patterns across your attempts at this type of task"
-  - [ ] Examples of good vs bad tool usage patterns
-  - [ ] Progressive disclosure: basic instructions first, advanced patterns at the bottom
+- [x] **CLAUDE.md authoring** (contextual, not just a list of tools)
+  - [x] **On session start:** "Call `apex_recall` with a summary of what you're about to work on"
+  - [x] **On encountering an error:** "Before debugging, call `apex_recall` with the error message — you may have seen this before"
+  - [x] **After fixing a tricky bug:** "Call `apex_record` with what the bug was, what you tried, and what worked"
+  - [x] **Before writing a new module:** "Call `apex_skills` to check for relevant patterns you've learned"
+  - [x] **On task completion:** "Call `apex_record` with the outcome. If something surprising happened, call `apex_reflect_get` and analyze it"
+  - [x] **On repeated failure:** "Call `apex_reflect_get('meso')` to see patterns across your attempts at this type of task"
+  - [x] Examples of good vs bad tool usage patterns
+  - [x] Progressive disclosure: basic instructions first, advanced patterns at the bottom
 
-- [ ] **Claude Code hooks** (documented for user's `settings.json`)
-  - [ ] Post-tool hook: optionally record tool outcomes as micro-episodes
-  - [ ] Guidance for configuring reflection triggers
+- [x] **Claude Code hooks** (documented for user's `settings.json`)
+  - [x] Post-tool hook: optionally record tool outcomes as micro-episodes
+  - [x] Guidance for configuring reflection triggers
 
-- [ ] **`.mcp.json` configuration**
-  - [ ] Server entry pointing to built APEX MCP server
-  - [ ] Environment variable passthrough (data dir path)
+- [x] **`.mcp.json` configuration**
+  - [x] Server entry pointing to built APEX MCP server
+  - [x] Environment variable passthrough (data dir path)
 
-- [ ] **CLAUDE.md effectiveness tracking**
-  - [ ] Track which APEX tools are called per session (stored in metrics)
-  - [ ] Track recall hit rate (did Claude use the returned context?)
-  - [ ] Surface metrics in `apex_status` so user/Claude can improve CLAUDE.md
-  - [ ] Suggest CLAUDE.md improvements when tools are underutilized
+- [x] **CLAUDE.md effectiveness tracking**
+  - [x] Track which APEX tools are called per session (stored in metrics)
+  - [x] Track recall hit rate (did Claude use the returned context?)
+  - [x] Surface metrics in `apex_status` so user/Claude can improve CLAUDE.md
+  - [x] Suggest CLAUDE.md improvements when tools are underutilized
 
-- [ ] **End-to-end smoke test**
-  - [ ] Start Claude Code with APEX configured
-  - [ ] Verify `apex_status` returns valid stats
-  - [ ] Verify `apex_record` -> `apex_reflect_get` -> `apex_reflect_store` -> `apex_recall` round-trip
-  - [ ] Verify skills persist across MCP server restarts
-  - [ ] Verify memory consolidation runs and data survives restart
-  - [ ] Verify cross-project recall (skill from project A visible in project B)
-  - [ ] Verify snapshot + rollback cycle
+- [x] **End-to-end smoke test**
+  - [x] Start Claude Code with APEX configured
+  - [x] Verify `apex_status` returns valid stats
+  - [x] Verify `apex_record` -> `apex_reflect_get` -> `apex_reflect_store` -> `apex_recall` round-trip
+  - [x] Verify skills persist across MCP server restarts
+  - [x] Verify memory consolidation runs and data survives restart
+  - [x] Verify cross-project recall (skill from project A visible in project B)
+  - [x] Verify snapshot + rollback cycle
 
 ---
 

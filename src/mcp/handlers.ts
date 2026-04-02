@@ -27,6 +27,7 @@ import { CrossProjectQuery } from '../memory/cross-project.js';
 import { PortabilityManager } from '../memory/portability.js';
 import { ProjectSimilarityIndex } from '../memory/project-index.js';
 import { SkillPromotionPipeline } from '../evolution/promotion.js';
+import { EffectivenessTracker } from '../integration/effectiveness-tracker.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,6 +69,7 @@ let curriculumGenerator: CurriculumGenerator | null = null;
 let globalStoreManager: GlobalStoreManager | null = null;
 let crossProjectQuery: CrossProjectQuery | null = null;
 let projectIndex: ProjectSimilarityIndex | null = null;
+let effectivenessTracker: EffectivenessTracker | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -167,6 +169,15 @@ async function getOrCreateProjectIndex(): Promise<ProjectSimilarityIndex> {
   return projectIndex;
 }
 
+async function getOrCreateEffectivenessTracker(projectPath?: string): Promise<EffectivenessTracker> {
+  if (effectivenessTracker) return effectivenessTracker;
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+  effectivenessTracker = new EffectivenessTracker(store);
+  return effectivenessTracker;
+}
+
 // ---------------------------------------------------------------------------
 // Handler implementations
 // ---------------------------------------------------------------------------
@@ -175,9 +186,14 @@ async function handleRecall(args: Record<string, unknown>): Promise<CallToolResu
   const query = args.query as string;
   if (!query) return fail('Missing required parameter: query');
 
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_recall');
+
   const limit = (args.limit as number) ?? 10;
   const mgr = await getOrCreateManager();
   const results = await mgr.recall(query, limit);
+
+  tracker.recordRecallHit(results.length > 0);
 
   return ok({
     status: 'ok',
@@ -195,6 +211,9 @@ async function handleRecall(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleRecord(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_record');
+
   const task = args.task as string;
   if (!task) return fail('Missing required parameter: task');
 
@@ -258,6 +277,9 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleReflectGet(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_reflect_get');
+
   const level = args.level as string;
   const coordinator = await getOrCreateReflectionCoordinator();
 
@@ -295,6 +317,9 @@ async function handleReflectGet(args: Record<string, unknown>): Promise<CallTool
 }
 
 async function handleReflectStore(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_reflect_store');
+
   const level = args.level as 'micro' | 'meso' | 'macro';
   const content = args.content as string;
   if (!level || !content) return fail('Missing required parameters: level, content');
@@ -322,6 +347,9 @@ async function handleReflectStore(args: Record<string, unknown>): Promise<CallTo
 }
 
 async function handlePlanContext(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_plan_context');
+
   const task = args.task as string;
   if (!task) return fail('Missing required parameter: task');
 
@@ -369,6 +397,9 @@ async function handlePlanContext(args: Record<string, unknown>): Promise<CallToo
 }
 
 async function handleSkills(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_skills');
+
   const action = (args.action as string) ?? 'list';
   const limit = (args.limit as number) ?? 20;
   const mgr = await getOrCreateManager();
@@ -412,6 +443,9 @@ async function handleSkills(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleSkillStore(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_skill_store');
+
   const name = args.name as string;
   const description = args.description as string;
   const pattern = args.pattern as string;
@@ -440,6 +474,9 @@ async function handleSkillStore(args: Record<string, unknown>): Promise<CallTool
 
 async function handleStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
   try {
+    const tracker = await getOrCreateEffectivenessTracker();
+    tracker.recordToolCall('apex_status');
+
     const mgr = await getOrCreateManager();
     const stats = await mgr.status();
     const stalenessStats = mgr.stalenessStats();
@@ -461,6 +498,26 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
       // Global store not yet initialised — fine
     }
 
+    // Phase 8: Include effectiveness metrics
+    let effectiveness: Record<string, unknown> = {};
+    try {
+      const report = await tracker.getReport();
+      await tracker.persist();
+      effectiveness = {
+        currentSession: {
+          sessionId: report.currentSession.sessionId,
+          durationMs: report.currentSession.durationMs,
+          totalCalls: report.currentSession.totalCalls,
+          toolCalls: report.currentSession.toolCalls,
+          recallHitRate: report.currentSession.recallHitRate,
+        },
+        pastSessionCount: report.pastSessionCount,
+        suggestions: report.suggestions,
+      };
+    } catch {
+      // Effectiveness tracker not ready — fine
+    }
+
     return ok({
       status: 'ok',
       tool: 'apex_status',
@@ -473,6 +530,7 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
       snapshots: stats.snapshots,
       staleness: stalenessStats,
       global: globalStats,
+      effectiveness,
     });
   } catch {
     // Fall back to basic status if manager not initialised
@@ -491,6 +549,9 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
 }
 
 async function handleConsolidate(_args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_consolidate');
+
   const mgr = await getOrCreateManager();
   const report = await mgr.consolidate();
 
@@ -507,6 +568,9 @@ async function handleConsolidate(_args: Record<string, unknown>): Promise<CallTo
 }
 
 async function handleCurriculum(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_curriculum');
+
   const root = (args.projectPath as string) ?? process.cwd();
   const mgr = await getOrCreateManager(root);
 
@@ -532,6 +596,9 @@ async function handleCurriculum(args: Record<string, unknown>): Promise<CallTool
 }
 
 async function handleSetup(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_setup');
+
   const projectPath = (args.projectPath as string) ?? process.cwd();
   const dataPath = getProjectDataPath(projectPath);
   const globalPath = getGlobalDataPath();
@@ -597,6 +664,9 @@ async function handleSetup(args: Record<string, unknown>): Promise<CallToolResul
 }
 
 async function handleSnapshot(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_snapshot');
+
   const mgr = await getOrCreateManager();
   const name = args.name as string | undefined;
   const snapshot = await mgr.createSnapshot(name);
@@ -611,6 +681,9 @@ async function handleSnapshot(args: Record<string, unknown>): Promise<CallToolRe
 }
 
 async function handleRollback(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_rollback');
+
   const mgr = await getOrCreateManager();
   const snapshotId = args.latest ? 'latest' : (args.snapshotId as string);
   if (!snapshotId) return fail('Provide snapshotId or set latest: true');
@@ -627,6 +700,9 @@ async function handleRollback(args: Record<string, unknown>): Promise<CallToolRe
 }
 
 async function handlePromote(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_promote');
+
   const skillId = args.skillId as string;
   if (!skillId) return fail('Missing required parameter: skillId');
 
@@ -663,6 +739,9 @@ async function handlePromote(args: Record<string, unknown>): Promise<CallToolRes
 }
 
 async function handleImport(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_import');
+
   const source = args.source as string;
   if (!source) return fail('Missing required parameter: source');
 
