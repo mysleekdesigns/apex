@@ -40,3 +40,11 @@ export {
   type MetricsSnapshot,
   type MetricsOptions,
 } from './metrics.js';
+
+export {
+  SkillPromotionPipeline,
+  type PromotionRule,
+  type PromotionCandidate,
+  type PromotionResult,
+  type PromotionPipelineOptions,
+} from './promotion.js';

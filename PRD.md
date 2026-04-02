@@ -1,9 +1,9 @@
 # APEX: Adaptive Personal Experience eXtraction
 ## Product Requirements Document
 
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Date:** 2026-04-02
-**Status:** Phase 6 Complete — Evolution Engine
+**Status:** Phase 7 Complete — Cross-Project Learning
 
 ---
 
@@ -48,7 +48,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **4** | MCTS Planning Engine | ✅ **Complete** | Experience-backed plan context, action history tree, plan tracker, value estimation |
 | **5** | Curriculum & Experience Replay | ✅ **Complete** | Replay buffer, difficulty estimator, curriculum generator, skill extractor |
 | **6** | Evolution Engine | ✅ **Complete** | Self-evaluation, knowledge distillation, metrics |
-| **7** | Cross-Project Learning | 📋 Not started | Global store, skill promotion, import/export |
+| **7** | Cross-Project Learning | ✅ **Complete** | Global store, skill promotion, cross-project query, portability, project similarity index |
 | **8** | Hooks, CLAUDE.md & E2E Integration | 📋 Not started | Hooks, CLAUDE.md effectiveness tracking, smoke tests |
 | **9** | Testing & Hardening | 📋 Not started | Unit tests, integration tests, benchmarks |
 | **10** | Advanced Features (Post-MVP) | 📋 Not started | Foresight reflection, multi-agent, tool creation |
@@ -651,34 +651,34 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Global store manager** (`src/memory/global-store.ts`)
-  - [ ] `~/.apex/` directory management (create, validate, migrate)
-  - [ ] Global skill registry with project-of-origin tracking
-  - [ ] Global knowledge base (language patterns, framework idioms, debugging strategies)
-  - [ ] User learning profile: aggregate stats across all projects
+- [x] **Global store manager** (`src/memory/global-store.ts`)
+  - [x] `~/.apex/` directory management (create, validate, migrate)
+  - [x] Global skill registry with project-of-origin tracking
+  - [x] Global knowledge base (language patterns, framework idioms, debugging strategies)
+  - [x] User learning profile: aggregate stats across all projects
 
-- [ ] **Skill promotion pipeline** (`src/evolution/promotion.ts`)
-  - [ ] Auto-promotion rules: skill succeeds in N+ projects (default 3) -> promote to global
-  - [ ] Manual promotion via `apex_promote` tool
-  - [ ] Conflict resolution: project-level overrides global (local wins)
-  - [ ] Provenance tracking: which project(s) contributed to each global skill
+- [x] **Skill promotion pipeline** (`src/evolution/promotion.ts`)
+  - [x] Auto-promotion rules: skill succeeds in N+ projects (default 3) -> promote to global
+  - [x] Manual promotion via `apex_promote` tool
+  - [x] Conflict resolution: project-level overrides global (local wins)
+  - [x] Provenance tracking: which project(s) contributed to each global skill
 
-- [ ] **Cross-project query** (`src/memory/cross-project.ts`)
-  - [ ] `apex_recall` searches project store first, then global store
-  - [ ] Results tagged with source (`[project]` vs `[global]` vs `[project:other-name]`)
-  - [ ] Relevance boost for same-tech-stack projects (e.g., both TypeScript + React)
-  - [ ] Privacy boundary: only skills/knowledge are shared, not raw episodes
+- [x] **Cross-project query** (`src/memory/cross-project.ts`)
+  - [x] `apex_recall` searches project store first, then global store
+  - [x] Results tagged with source (`[project]` vs `[global]` vs `[project:other-name]`)
+  - [x] Relevance boost for same-tech-stack projects (e.g., both TypeScript + React)
+  - [x] Privacy boundary: only skills/knowledge are shared, not raw episodes
 
-- [ ] **Import/Export** (`src/memory/portability.ts`)
-  - [ ] Export project skills as portable JSON bundle (shareable with teammates)
-  - [ ] Import skill bundle into project or global store
-  - [ ] Merge strategy: skip duplicates, flag conflicts, accept new
-  - [ ] `apex_import` tool for Claude to trigger imports
+- [x] **Import/Export** (`src/memory/portability.ts`)
+  - [x] Export project skills as portable JSON bundle (shareable with teammates)
+  - [x] Import skill bundle into project or global store
+  - [x] Merge strategy: skip duplicates, flag conflicts, accept new
+  - [x] `apex_import` tool for Claude to trigger imports
 
-- [ ] **Project similarity index** (`src/memory/project-index.ts`)
-  - [ ] Fingerprint each project (tech stack, directory patterns, dependency overlap)
-  - [ ] Rank projects by similarity for cross-project recall prioritization
-  - [ ] Update fingerprint on project structure changes
+- [x] **Project similarity index** (`src/memory/project-index.ts`)
+  - [x] Fingerprint each project (tech stack, directory patterns, dependency overlap)
+  - [x] Rank projects by similarity for cross-project recall prioritization
+  - [x] Update fingerprint on project structure changes
 
 ---
 

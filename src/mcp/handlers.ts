@@ -1,9 +1,8 @@
 /**
  * APEX MCP Tool Handlers
  *
- * Connects MCP tool calls to the memory, reflection, and planning subsystems.
- * Handlers that depend on subsystems not yet built (curriculum,
- * evolution) remain stubbed.
+ * Connects MCP tool calls to the memory, reflection, planning, and
+ * cross-project learning subsystems.
  */
 
 import path from 'node:path';
@@ -23,6 +22,11 @@ import { ValueEstimator } from '../planning/value.js';
 import { CurriculumGenerator } from '../curriculum/generator.js';
 import { DifficultyEstimator } from '../curriculum/difficulty.js';
 import { SkillExtractor } from '../curriculum/skill-extractor.js';
+import { GlobalStoreManager } from '../memory/global-store.js';
+import { CrossProjectQuery } from '../memory/cross-project.js';
+import { PortabilityManager } from '../memory/portability.js';
+import { ProjectSimilarityIndex } from '../memory/project-index.js';
+import { SkillPromotionPipeline } from '../evolution/promotion.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +65,9 @@ let actionTree: ActionTree | null = null;
 let planTracker: PlanTracker | null = null;
 let valueEstimator: ValueEstimator | null = null;
 let curriculumGenerator: CurriculumGenerator | null = null;
+let globalStoreManager: GlobalStoreManager | null = null;
+let crossProjectQuery: CrossProjectQuery | null = null;
+let projectIndex: ProjectSimilarityIndex | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -134,8 +141,34 @@ async function getOrCreateReflectionCoordinator(projectPath?: string): Promise<R
   return reflectionCoordinator;
 }
 
+async function getOrCreateGlobalStore(): Promise<GlobalStoreManager> {
+  if (globalStoreManager) return globalStoreManager;
+  globalStoreManager = new GlobalStoreManager({ globalDataPath: getGlobalDataPath(), logger });
+  await globalStoreManager.init();
+  return globalStoreManager;
+}
+
+async function getOrCreateCrossProjectQuery(projectPath?: string): Promise<CrossProjectQuery> {
+  if (crossProjectQuery) return crossProjectQuery;
+  const root = projectPath ?? process.cwd();
+  const projectStore = new FileStore(getProjectDataPath(root));
+  await projectStore.init();
+  const globalStore = new FileStore(getGlobalDataPath());
+  await globalStore.init();
+  crossProjectQuery = new CrossProjectQuery({ projectStore, globalStore, logger });
+  return crossProjectQuery;
+}
+
+async function getOrCreateProjectIndex(): Promise<ProjectSimilarityIndex> {
+  if (projectIndex) return projectIndex;
+  const globalStore = new FileStore(getGlobalDataPath());
+  await globalStore.init();
+  projectIndex = new ProjectSimilarityIndex({ globalStore, logger });
+  return projectIndex;
+}
+
 // ---------------------------------------------------------------------------
-// Handler implementations — Phase 2 (memory-backed)
+// Handler implementations
 // ---------------------------------------------------------------------------
 
 async function handleRecall(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -411,6 +444,23 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
     const stats = await mgr.status();
     const stalenessStats = mgr.stalenessStats();
 
+    // Phase 7: Include global store stats
+    let globalStats: Record<string, unknown> = {};
+    try {
+      const gsm = await getOrCreateGlobalStore();
+      const globalSkills = await gsm.listGlobalSkills();
+      const profile = await gsm.getProfile();
+      const projects = await gsm.listRegisteredProjects();
+      globalStats = {
+        globalSkills: globalSkills.length,
+        registeredProjects: projects.length,
+        totalEpisodes: profile.totalEpisodes,
+        learningVelocity: profile.learningVelocity,
+      };
+    } catch {
+      // Global store not yet initialised — fine
+    }
+
     return ok({
       status: 'ok',
       tool: 'apex_status',
@@ -422,6 +472,7 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
       },
       snapshots: stats.snapshots,
       staleness: stalenessStats,
+      global: globalStats,
     });
   } catch {
     // Fall back to basic status if manager not initialised
@@ -513,6 +564,18 @@ async function handleSetup(args: Record<string, unknown>): Promise<CallToolResul
   });
   await memoryManager.init();
 
+  // Phase 7: Register project in global store and similarity index
+  const gsm = await getOrCreateGlobalStore();
+  await gsm.registerProject(projectPath, profile.name);
+
+  const idx = await getOrCreateProjectIndex();
+  const fingerprint = await idx.upsertFingerprint(profile);
+  const similarProjects = await idx.findSimilar(profile, 3);
+
+  // Set current project on cross-project query for tech-stack boosting
+  const cpq = await getOrCreateCrossProjectQuery(projectPath);
+  cpq.setCurrentProject(profile);
+
   return ok({
     status: 'ok',
     projectPath,
@@ -524,6 +587,11 @@ async function handleSetup(args: Record<string, unknown>): Promise<CallToolResul
       techStack: profile.techStack,
       dependencies: profile.dependencies.length,
     },
+    similarProjects: similarProjects.map((s) => ({
+      name: s.fingerprint.projectName,
+      path: s.fingerprint.projectPath,
+      similarity: Math.round(s.overallScore * 1000) / 1000,
+    })),
     message: 'APEX initialised successfully.',
   });
 }
@@ -562,23 +630,35 @@ async function handlePromote(args: Record<string, unknown>): Promise<CallToolRes
   const skillId = args.skillId as string;
   if (!skillId) return fail('Missing required parameter: skillId');
 
-  const mgr = await getOrCreateManager();
-  const skill = await mgr.getSkill(skillId);
-  if (!skill) return fail(`Skill not found: ${skillId}`);
-
-  // Copy skill to global store
+  const root = process.cwd();
+  const projectStore = new FileStore(getProjectDataPath(root));
+  await projectStore.init();
   const globalStore = new FileStore(getGlobalDataPath());
   await globalStore.init();
-  await globalStore.write('skills', skill.id, {
-    ...skill,
-    sourceProject: process.cwd(),
+
+  const pipeline = new SkillPromotionPipeline({
+    projectStore,
+    globalStore,
+    logger,
   });
+
+  const projectName = path.basename(root);
+  const result = await pipeline.manualPromote(skillId, root, projectName);
+
+  if (!result.promoted) {
+    return fail(result.reason);
+  }
+
+  // Also register in global store manager
+  const gsm = await getOrCreateGlobalStore();
+  await gsm.registerProject(root, projectName);
 
   return ok({
     status: 'ok',
-    skillId: skill.id,
-    name: skill.name,
-    message: `Skill "${skill.name}" promoted to global store.`,
+    skillId: result.skillId,
+    globalSkillId: result.globalSkillId,
+    name: result.skillName,
+    message: result.reason,
   });
 }
 
@@ -586,44 +666,34 @@ async function handleImport(args: Record<string, unknown>): Promise<CallToolResu
   const source = args.source as string;
   if (!source) return fail('Missing required parameter: source');
 
+  const root = process.cwd();
+  const targetStore = new FileStore(getProjectDataPath(root));
+  await targetStore.init();
+
+  const strategy = (args.strategy as 'skip-duplicates' | 'overwrite' | 'keep-higher-confidence') ?? 'skip-duplicates';
+
+  // Check if source is a JSON bundle file or a project path
   const sourcePath = path.resolve(source);
-  const sourceDataPath = path.join(sourcePath, '.apex-data');
-  const sourceStore = new FileStore(sourceDataPath);
 
-  // Read skills from source project
-  const skillIds = await sourceStore.list('skills');
-  if (skillIds.length === 0) {
-    return ok({
-      status: 'ok',
-      imported: 0,
-      message: `No skills found in ${sourcePath}`,
-    });
-  }
+  const portability = new PortabilityManager({
+    projectStore: targetStore,
+    projectName: path.basename(root),
+    projectPath: root,
+    logger,
+  });
 
-  const mgr = await getOrCreateManager();
-  let imported = 0;
-
-  for (const id of skillIds) {
-    const skill = await sourceStore.read<Record<string, unknown>>('skills', id);
-    if (skill) {
-      await mgr.addSkill({
-        name: skill.name as string,
-        description: skill.description as string,
-        pattern: skill.pattern as string,
-        preconditions: (skill.preconditions as string[]) ?? [],
-        tags: (skill.tags as string[]) ?? [],
-        sourceProject: sourcePath,
-        sourceFiles: (skill.sourceFiles as string[]) ?? [],
-      });
-      imported++;
-    }
-  }
+  const result = await portability.importFromProject(sourcePath, targetStore, strategy);
 
   return ok({
     status: 'ok',
     source: sourcePath,
-    imported,
-    message: `Imported ${imported} skills from ${sourcePath}.`,
+    strategy,
+    total: result.total,
+    imported: result.imported,
+    skipped: result.skipped,
+    conflicts: result.conflicts.length,
+    errors: result.errors,
+    message: `Imported ${result.imported} skills from ${sourcePath} (${result.skipped} skipped, ${result.conflicts.length} conflicts).`,
   });
 }
 

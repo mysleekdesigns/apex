@@ -10,3 +10,7 @@ export { StalenessDetector, type StalenessResult, type StalenessStats } from './
 export { SnapshotManager, type SnapshotManagerOptions } from './snapshots.js';
 export { EmbeddingStore, type QuantizedInt8, type EmbeddingStoreStats } from './embedding-store.js';
 export { MemoryManager, type MemoryManagerOptions, type MemoryStats } from './manager.js';
+export { CrossProjectQuery, type CrossProjectSearchResult, type CrossProjectQueryOptions, type TechStackBoostConfig, type ResultSource } from './cross-project.js';
+export { GlobalStoreManager, type GlobalSkill, type KnowledgeEntry, type UserLearningProfile, type GlobalStoreManagerOptions } from './global-store.js';
+export { PortabilityManager, type SkillBundle, type ExportableSkill, type ImportResult, type ImportConflict, type MergeStrategy, type PortabilityOptions } from './portability.js';
+export { ProjectSimilarityIndex, type ProjectFingerprint, type SimilarityScore, type ProjectIndexOptions } from './project-index.js';
