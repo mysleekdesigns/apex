@@ -3,7 +3,7 @@
 
 **Version:** 0.7.0
 **Date:** 2026-04-02
-**Status:** Phase 5 Complete — Curriculum & Experience Replay
+**Status:** Phase 6 Complete — Evolution Engine
 
 ---
 
@@ -47,7 +47,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **3** | Multi-Level Reflection Engine | ✅ **Complete** | Micro/meso/macro data assemblers, reflection storage |
 | **4** | MCTS Planning Engine | ✅ **Complete** | Experience-backed plan context, action history tree, plan tracker, value estimation |
 | **5** | Curriculum & Experience Replay | ✅ **Complete** | Replay buffer, difficulty estimator, curriculum generator, skill extractor |
-| **6** | Evolution Engine | 📋 Not started | Self-evaluation, knowledge distillation, metrics |
+| **6** | Evolution Engine | ✅ **Complete** | Self-evaluation, knowledge distillation, metrics |
 | **7** | Cross-Project Learning | 📋 Not started | Global store, skill promotion, import/export |
 | **8** | Hooks, CLAUDE.md & E2E Integration | 📋 Not started | Hooks, CLAUDE.md effectiveness tracking, smoke tests |
 | **9** | Testing & Hardening | 📋 Not started | Unit tests, integration tests, benchmarks |
@@ -619,29 +619,29 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Evolution loop controller** (`src/evolution/loop.ts`)
-  - [ ] Main event loop: select task -> plan -> execute -> reflect -> consolidate
-  - [ ] Configurable iteration budget (max iterations, time limit, token budget)
-  - [ ] Graceful pause/resume with full state serialization
-  - [ ] Progress metrics: success rate over time, skill count, memory utilization
+- [x] **Evolution loop controller** (`src/evolution/loop.ts`)
+  - [x] Main event loop: select task -> plan -> execute -> reflect -> consolidate
+  - [x] Configurable iteration budget (max iterations, time limit, token budget)
+  - [x] Graceful pause/resume with full state serialization
+  - [x] Progress metrics: success rate over time, skill count, memory utilization
 
-- [ ] **Self-evaluation module** (`src/evolution/evaluator.ts`)
-  - [ ] Outcome scoring: binary success/fail + continuous quality score
-  - [ ] LLM-as-judge for open-ended task evaluation
-  - [ ] Comparison against reference solutions when available
-  - [ ] Novelty detection: flag when task is unlike anything seen before
+- [x] **Self-evaluation module** (`src/evolution/evaluator.ts`)
+  - [x] Outcome scoring: binary success/fail + continuous quality score
+  - [x] LLM-as-judge for open-ended task evaluation
+  - [x] Comparison against reference solutions when available
+  - [x] Novelty detection: flag when task is unlike anything seen before
 
-- [ ] **Knowledge distillation** (`src/evolution/distillation.ts`)
-  - [ ] Periodic consolidation: compress episodic memory into semantic entries
-  - [ ] Rule extraction: identify consistent patterns across episodes
-  - [ ] Skill crystallization: promote frequently-successful action sequences
-  - [ ] Forgetting curve: decay unused knowledge (Ebbinghaus-inspired)
+- [x] **Knowledge distillation** (`src/evolution/distillation.ts`)
+  - [x] Periodic consolidation: compress episodic memory into semantic entries
+  - [x] Rule extraction: identify consistent patterns across episodes
+  - [x] Skill crystallization: promote frequently-successful action sequences
+  - [x] Forgetting curve: decay unused knowledge (Ebbinghaus-inspired)
 
-- [ ] **Metrics & telemetry** (`src/evolution/metrics.ts`)
-  - [ ] Per-iteration stats: task difficulty, outcome, planning time, memory usage
-  - [ ] Rolling aggregates: success rate (window=50), avg reward, skill growth
-  - [ ] Memory pressure monitoring: tier utilization, eviction rates
-  - [ ] Learning curve visualization data export (CSV/JSON)
+- [x] **Metrics & telemetry** (`src/evolution/metrics.ts`)
+  - [x] Per-iteration stats: task difficulty, outcome, planning time, memory usage
+  - [x] Rolling aggregates: success rate (window=50), avg reward, skill growth
+  - [x] Memory pressure monitoring: tier utilization, eviction rates
+  - [x] Learning curve visualization data export (CSV/JSON)
 
 ---
 
