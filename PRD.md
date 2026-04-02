@@ -1,9 +1,9 @@
 # APEX: Adaptive Personal Experience eXtraction
 ## Product Requirements Document
 
-**Version:** 0.5.0
+**Version:** 0.5.1
 **Date:** 2026-04-02
-**Status:** Draft
+**Status:** Phase 1 Complete — Foundation & MCP Server Scaffold
 
 ---
 
@@ -35,6 +35,24 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **Voyager** (Wang et al., 2023) | Skill library + curriculum learning for lifelong learning | Procedural memory + automatic curriculum |
 | **LATS** (Zhou et al., 2024) | Monte Carlo Tree Search for LLM agent planning | MCTS-based action selection with experience-backed values |
 | **Self-Evolving Agents Survey** (Gao et al., 2025) | What/When/How to evolve taxonomy | Unified evolution engine across all dimensions |
+
+---
+
+## Implementation Progress
+
+| Phase | Name | Status | Notes |
+|-------|------|--------|-------|
+| **1** | Foundation & MCP Server Scaffold | ✅ **Complete** | MCP server, 15 tool defs, types, utilities, project scanner. Handlers stubbed. |
+| **2** | Hierarchical Memory System | 📋 Not started | 4-tier memory, staleness detection, snapshots |
+| **3** | Multi-Level Reflection Engine | 📋 Not started | Micro/meso/macro data assemblers, reflection storage |
+| **4** | MCTS Planning Engine | 📋 Not started | Experience-backed plan context, action history tree |
+| **5** | Curriculum & Experience Replay | 📋 Not started | Difficulty estimation, curriculum generation, skill extraction |
+| **6** | Evolution Engine | 📋 Not started | Self-evaluation, knowledge distillation, metrics |
+| **7** | Cross-Project Learning | 📋 Not started | Global store, skill promotion, import/export |
+| **8** | Hooks, CLAUDE.md & E2E Integration | 📋 Not started | Hooks, CLAUDE.md effectiveness tracking, smoke tests |
+| **9** | Testing & Hardening | 📋 Not started | Unit tests, integration tests, benchmarks |
+| **10** | Advanced Features (Post-MVP) | 📋 Not started | Foresight reflection, multi-agent, tool creation |
+| **11** | Team Learning & GitHub Sharing | 📋 Not started | `.apex-shared/`, PR-based skill proposals, team memory tier |
 
 ---
 
@@ -303,78 +321,85 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ---
 
-## Phase 1: Foundation & MCP Server Scaffold
+## Phase 1: Foundation & MCP Server Scaffold ✅ COMPLETE
 
 **Goal:** Establish the project, core types, MCP server skeleton, and the `.mcp.json` / `CLAUDE.md` integration files that make APEX available in Claude Code immediately.
 
 **Runtime:** TypeScript / Node.js (ESM)
 **Storage:** File-based (JSON + binary) in `.apex-data/`
+**Completed:** 2026-04-02 | **Commit:** `925e9c8`
+**Lines of code:** ~2,030 (TypeScript, src/ only)
 
 ### Checklist
 
-- [ ] **Project scaffold**
-  - [ ] Initialize `package.json` with TypeScript, ESM module type, `bin` entry
-  - [ ] Configure `tsconfig.json` (strict mode, ES2022 target, path aliases)
-  - [ ] Set up directory structure: `src/{memory,reflection,planning,curriculum,evolution,mcp,utils}`
-  - [ ] Add dependencies: `@modelcontextprotocol/sdk`
-  - [ ] Add dev dependencies: `vitest`, `tsx`, `typescript`
-  - [ ] Add `.gitignore` for `node_modules`, `dist`, `*.db`, `.apex-data`
+- [x] **Project scaffold** ✅
+  - [x] Initialize `package.json` with TypeScript, ESM module type, `bin` entry
+  - [x] Configure `tsconfig.json` (strict mode, ES2022 target, path aliases)
+  - [x] Set up directory structure: `src/{memory,reflection,planning,curriculum,evolution,mcp,utils}`
+  - [x] Add dependencies: `@modelcontextprotocol/sdk`
+  - [x] Add dev dependencies: `vitest`, `tsx`, `typescript`
+  - [x] Add `.gitignore` for `node_modules`, `dist`, `*.db`, `.apex-data`
 
-- [ ] **MCP server entry point** (`src/mcp/server.ts`)
-  - [ ] Initialize MCP server with stdio transport
-  - [ ] Register all APEX tool handlers (stubs initially)
-  - [ ] Graceful shutdown handling
-  - [ ] Server info and capability declaration
+- [x] **MCP server entry point** (`src/mcp/server.ts`) ✅
+  - [x] Initialize MCP server with stdio transport
+  - [x] Register all APEX tool handlers (stubs initially)
+  - [x] Graceful shutdown handling
+  - [x] Server info and capability declaration
 
-- [ ] **MCP tool definitions** (`src/mcp/tools.ts`) — all tools are pure data ops, zero LLM calls
-  - [ ] `apex_recall` — input: query string, context? | output: ranked memory results across all tiers
-  - [ ] `apex_record` — input: episode data (task, actions, outcome, reward?) | output: episode ID
-  - [ ] `apex_reflect_get` — input: scope ("recent", episode IDs, task type) | output: grouped episode data for Claude to reason over
-  - [ ] `apex_reflect_store` — input: reflection (level, insights, error_types, strategies) | output: reflection ID
-  - [ ] `apex_plan_context` — input: task description | output: past attempts, relevant skills, known pitfalls
-  - [ ] `apex_skills` — input: query? or "list" | output: matching skills with success rates
-  - [ ] `apex_skill_store` — input: skill definition (name, description, preconditions, pattern) | output: skill ID
-  - [ ] `apex_status` — input: none | output: memory stats, tier utilization, learning curve data
-  - [ ] `apex_consolidate` — input: none | output: consolidation report (what moved between tiers)
-  - [ ] `apex_curriculum` — input: domain?, skill_level? | output: next suggested task + difficulty score
-  - [ ] `apex_setup` — input: project_path? | output: initialization report (project profile, global link status)
-  - [ ] `apex_snapshot` — input: name? | output: snapshot ID + metadata
-  - [ ] `apex_rollback` — input: snapshot ID or "latest" | output: restored state summary
-  - [ ] `apex_promote` — input: skill ID | output: confirmation (project -> global)
-  - [ ] `apex_import` — input: source path or project name | output: import report (what was merged)
+- [x] **MCP tool definitions** (`src/mcp/tools.ts`) ✅ — all 15 core tools defined with full JSON Schema
+  - [x] `apex_recall` — input: query string, context? | output: ranked memory results across all tiers
+  - [x] `apex_record` — input: episode data (task, actions, outcome, reward?) | output: episode ID
+  - [x] `apex_reflect_get` — input: scope ("recent", episode IDs, task type) | output: grouped episode data for Claude to reason over
+  - [x] `apex_reflect_store` — input: reflection (level, insights, error_types, strategies) | output: reflection ID
+  - [x] `apex_plan_context` — input: task description | output: past attempts, relevant skills, known pitfalls
+  - [x] `apex_skills` — input: query? or "list" | output: matching skills with success rates
+  - [x] `apex_skill_store` — input: skill definition (name, description, preconditions, pattern) | output: skill ID
+  - [x] `apex_status` — input: none | output: memory stats, tier utilization, learning curve data
+  - [x] `apex_consolidate` — input: none | output: consolidation report (what moved between tiers)
+  - [x] `apex_curriculum` — input: domain?, skill_level? | output: next suggested task + difficulty score
+  - [x] `apex_setup` — input: project_path? | output: initialization report (project profile, global link status)
+  - [x] `apex_snapshot` — input: name? | output: snapshot ID + metadata
+  - [x] `apex_rollback` — input: snapshot ID or "latest" | output: restored state summary
+  - [x] `apex_promote` — input: skill ID | output: confirmation (project -> global)
+  - [x] `apex_import` — input: source path or project name | output: import report (what was merged)
 
-- [ ] **Integration files**
-  - [ ] Update `.mcp.json` to include APEX server entry
-  - [ ] Create `CLAUDE.md` with contextual instructions for Claude (see "Self-Improving CLAUDE.md" section)
-  - [ ] Create `.apex-data/` directory structure for persistence
-  - [ ] Create `~/.apex/` global directory structure (if not exists)
-  - [ ] Register project in `~/.apex/projects-index.json`
+- [x] **Integration files** (partial) ✅
+  - [x] Update `.mcp.json` to include APEX server entry
+  - [x] Create `CLAUDE.md` with contextual instructions for Claude (see "Self-Improving CLAUDE.md" section)
+  - [ ] Create `.apex-data/` directory structure for persistence *(deferred to `apex_setup` handler implementation in Phase 2)*
+  - [ ] Create `~/.apex/` global directory structure (if not exists) *(deferred to `apex_setup` handler implementation in Phase 2)*
+  - [ ] Register project in `~/.apex/projects-index.json` *(deferred to `apex_setup` handler implementation in Phase 2)*
 
-- [ ] **Project scanner** (`src/utils/project-scanner.ts`) — for cold start bootstrap
-  - [ ] Detect project type (package.json, tsconfig, Cargo.toml, pyproject.toml, etc.)
-  - [ ] Extract tech stack, dependencies, scripts
-  - [ ] Identify directory structure patterns
-  - [ ] Read README / docs for project context
-  - [ ] Generate initial project profile for `.apex-data/config.json`
+- [x] **Project scanner** (`src/utils/project-scanner.ts`) ✅ — for cold start bootstrap
+  - [x] Detect project type (package.json, tsconfig, Cargo.toml, pyproject.toml, etc.)
+  - [x] Extract tech stack, dependencies, scripts
+  - [x] Identify directory structure patterns
+  - [x] Read README / docs for project context
+  - [x] Generate initial project profile for `.apex-data/config.json`
 
-- [ ] **Core type definitions** (`src/types.ts`)
-  - [ ] `Episode` — task execution record (id, task, actions[], outcome, reward, timestamp, embedding?)
-  - [ ] `Trajectory` — ordered sequence of `(state, action, reward, next_state)` tuples
-  - [ ] `Reflection` — structured output (level, content, error_types[], actionable_insights[])
-  - [ ] `Skill` — reusable capability (name, description, preconditions, code/prompt, success_rate, usage_count, confidence, source_project, source_files[])
-  - [ ] `MemoryEntry` — base for all memory tiers (id, content, embedding, heat_score, confidence, created_at, accessed_at, source_files[]?, stale?)
-  - [ ] `SearchResult` — ranked retrieval result (entry, score, source_tier)
-  - [ ] `Task` — task definition (id, description, difficulty, domain, constraints)
-  - [ ] `AgentConfig` — global config (model, memory limits, exploration params, thresholds)
+- [x] **Core type definitions** (`src/types.ts`) ✅ — 518 lines, comprehensive
+  - [x] `Episode` — task execution record (id, task, actions[], outcome, reward, timestamp, embedding?)
+  - [x] `Trajectory` — ordered sequence of `(state, action, reward, next_state)` tuples
+  - [x] `Reflection` — structured output (level, content, error_types[], actionable_insights[])
+  - [x] `Skill` — reusable capability (name, description, preconditions, code/prompt, success_rate, usage_count, confidence, source_project, source_files[])
+  - [x] `MemoryEntry` — base for all memory tiers (id, content, embedding, heat_score, confidence, created_at, accessed_at, source_files[]?, stale?)
+  - [x] `SearchResult` — ranked retrieval result (entry, score, source_tier)
+  - [x] `Task` — task definition (id, description, difficulty, domain, constraints)
+  - [x] `AgentConfig` — global config (model, memory limits, exploration params, thresholds)
 
-- [ ] **Shared utilities** (`src/utils/`)
-  - [ ] `embeddings.ts` — tiered embedding: L0 (keyword/TF-IDF), L1 (SimHash), L2 (transformers.js, lazy-loaded)
-  - [ ] `similarity.ts` — cosine similarity, Jaccard similarity for keyword sets
-  - [ ] `hashing.ts` — content hashing for deduplication (FNV-1a)
-  - [ ] `serialization.ts` — efficient binary serialization for episodes and embeddings
-  - [ ] `ring-buffer.ts` — fixed-capacity ring buffer with O(1) push/evict
-  - [ ] `event-bus.ts` — typed event emitter for inter-system communication
-  - [ ] `logger.ts` — structured logger with levels and optional file output
+- [x] **Shared utilities** (`src/utils/`) ✅ — 11 modules, ~750 lines
+  - [x] `embeddings.ts` — tiered embedding: L0 (keyword/TF-IDF), L1 (SimHash), L2 (transformers.js, lazy-loaded)
+  - [x] `similarity.ts` — cosine similarity, Jaccard similarity for keyword sets
+  - [x] `hashing.ts` — content hashing for deduplication (FNV-1a)
+  - [x] `serialization.ts` — efficient binary serialization for episodes and embeddings
+  - [x] `ring-buffer.ts` — fixed-capacity ring buffer with O(1) push/evict
+  - [x] `event-bus.ts` — typed event emitter for inter-system communication
+  - [x] `logger.ts` — structured logger with levels and optional file output
+  - [x] `file-store.ts` — filesystem-based CRUD persistence for 6 collections
+  - [x] `project-scanner.ts` — auto-detect project metadata (Node, Python, Rust, Go, web frameworks)
+  - [x] `index.ts` — barrel exports
+
+**Note:** All 15 tool handlers in `src/mcp/handlers.ts` are stubbed (return `not_yet_implemented`). Implementing the actual handler logic requires the subsystems built in Phases 2–6.
 
 ---
 
