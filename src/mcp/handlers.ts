@@ -1,15 +1,24 @@
 /**
  * APEX MCP Tool Handlers
  *
- * Stub implementations for all APEX tools.
- * Each handler returns a proper MCP response structure.
- * Real implementations will replace the stubs as subsystems come online.
+ * Connects MCP tool calls to the memory subsystem.
+ * Handlers that depend on subsystems not yet built (reflection, planning,
+ * curriculum, evolution) remain stubbed.
  */
 
+import path from 'node:path';
+import os from 'node:os';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { Episode, Action, Outcome, Reflection, Snapshot } from '../types.js';
+import { generateId } from '../types.js';
+import { MemoryManager } from '../memory/manager.js';
+import { FileStore } from '../utils/file-store.js';
+import { Logger } from '../utils/logger.js';
+import { scanProject } from '../utils/project-scanner.js';
 
-// Types will be fleshed out as the project evolves
-// import type { ... } from '../types.js';
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function ok(data: Record<string, unknown>): CallToolResult {
   return {
@@ -26,76 +35,508 @@ function stub(toolName: string, args: Record<string, unknown>): CallToolResult {
   });
 }
 
-// ── Handler implementations ───────────────────────────────────────
+function fail(message: string): CallToolResult {
+  return {
+    content: [{ type: 'text', text: JSON.stringify({ error: message }) }],
+    isError: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Singleton memory manager (initialised lazily by apex_setup or first use)
+// ---------------------------------------------------------------------------
+
+let memoryManager: MemoryManager | null = null;
+const logger = new Logger({ prefix: 'apex:handlers' });
+
+function getProjectDataPath(projectPath: string): string {
+  return path.join(projectPath, '.apex-data');
+}
+
+function getGlobalDataPath(): string {
+  return path.join(os.homedir(), '.apex');
+}
+
+async function getOrCreateManager(projectPath?: string): Promise<MemoryManager> {
+  if (memoryManager) return memoryManager;
+
+  const root = projectPath ?? process.cwd();
+  memoryManager = new MemoryManager({
+    projectDataPath: getProjectDataPath(root),
+    globalDataPath: getGlobalDataPath(),
+    projectPath: root,
+    logger,
+  });
+  await memoryManager.init();
+  return memoryManager;
+}
+
+// ---------------------------------------------------------------------------
+// Handler implementations — Phase 2 (memory-backed)
+// ---------------------------------------------------------------------------
 
 async function handleRecall(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_recall', args);
+  const query = args.query as string;
+  if (!query) return fail('Missing required parameter: query');
+
+  const limit = (args.limit as number) ?? 10;
+  const mgr = await getOrCreateManager();
+  const results = await mgr.recall(query, limit);
+
+  return ok({
+    status: 'ok',
+    query,
+    resultCount: results.length,
+    results: results.map((r) => ({
+      content: r.entry.content,
+      score: Math.round(r.score * 1000) / 1000,
+      tier: r.sourceTier,
+      source: r.source,
+      confidence: r.entry.confidence,
+      stale: r.entry.stale ?? false,
+    })),
+  });
 }
 
 async function handleRecord(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_record', args);
+  const task = args.task as string;
+  if (!task) return fail('Missing required parameter: task');
+
+  const rawActions = (args.actions ?? []) as Array<{
+    type: string;
+    description: string;
+    success: boolean;
+  }>;
+  const rawOutcome = args.outcome as {
+    success: boolean;
+    description: string;
+    errorType?: string;
+    duration: number;
+  };
+  if (!rawOutcome) return fail('Missing required parameter: outcome');
+
+  const now = Date.now();
+  const actions: Action[] = rawActions.map((a) => ({
+    type: a.type,
+    description: a.description,
+    success: a.success,
+    timestamp: now,
+  }));
+
+  const outcome: Outcome = {
+    success: rawOutcome.success,
+    description: rawOutcome.description,
+    errorType: rawOutcome.errorType,
+    duration: rawOutcome.duration,
+  };
+
+  const reward = (args.reward as number) ?? (outcome.success ? 1.0 : 0.0);
+
+  const episode: Episode = {
+    id: generateId(),
+    task,
+    actions,
+    outcome,
+    reward,
+    timestamp: now,
+    sourceFiles: (args.sourceFiles as string[]) ?? undefined,
+  };
+
+  const mgr = await getOrCreateManager();
+
+  // Record as episodic memory entry
+  const content = `Task: ${task}\nOutcome: ${outcome.success ? 'SUCCESS' : 'FAILURE'} — ${outcome.description}`;
+  const entry = await mgr.addToEpisodic(content);
+
+  // Also store the full episode in the file store
+  const store = new FileStore(getProjectDataPath(process.cwd()));
+  await store.write('episodes', episode.id, episode);
+
+  return ok({
+    status: 'ok',
+    episodeId: episode.id,
+    memoryEntryId: entry.id,
+    task,
+    success: outcome.success,
+  });
 }
 
 async function handleReflectGet(args: Record<string, unknown>): Promise<CallToolResult> {
+  // Phase 3 will implement the full reflection data assembly.
+  // For now, return recent episodes from episodic memory as raw data.
+  const scope = args.scope as string;
+  const limit = (args.limit as number) ?? 20;
+  const mgr = await getOrCreateManager();
+
+  if (scope === 'recent') {
+    const results = await mgr.recall('recent episodes', limit);
+    return ok({
+      status: 'ok',
+      scope,
+      episodeCount: results.length,
+      episodes: results.map((r) => ({
+        id: r.entry.id,
+        content: r.entry.content,
+        tier: r.sourceTier,
+        confidence: r.entry.confidence,
+      })),
+      message: 'Phase 3 will add structured micro/meso/macro reflection data assembly.',
+    });
+  }
+
   return stub('apex_reflect_get', args);
 }
 
 async function handleReflectStore(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_reflect_store', args);
-}
+  const level = args.level as 'micro' | 'meso' | 'macro';
+  const content = args.content as string;
+  if (!level || !content) return fail('Missing required parameters: level, content');
 
-async function handlePlanContext(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_plan_context', args);
-}
+  const reflection: Reflection = {
+    id: generateId(),
+    level,
+    content,
+    errorTypes: (args.errorTypes as string[]) ?? [],
+    actionableInsights: (args.actionableInsights as string[]) ?? [],
+    sourceEpisodes: (args.sourceEpisodes as string[]) ?? [],
+    timestamp: Date.now(),
+    confidence: 0.7,
+  };
 
-async function handleSkills(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_skills', args);
-}
+  const mgr = await getOrCreateManager();
 
-async function handleSkillStore(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_skill_store', args);
-}
+  // Store reflection content in semantic memory
+  await mgr.addToSemantic(
+    `[Reflection:${level}] ${content}`,
+    { confidence: reflection.confidence },
+  );
 
-async function handleStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+  // Store the full reflection object
+  const store = new FileStore(getProjectDataPath(process.cwd()));
+  await store.write('reflections', reflection.id, reflection);
+
   return ok({
     status: 'ok',
-    tool: 'apex_status',
-    memory: {
-      episodes: 0,
-      reflections: { micro: 0, meso: 0, macro: 0 },
-      skills: 0,
-      snapshots: 0,
-    },
-    message: 'APEX is running. Memory subsystems not yet connected.',
+    reflectionId: reflection.id,
+    level,
+    storedInsights: reflection.actionableInsights.length,
   });
 }
 
+async function handlePlanContext(args: Record<string, unknown>): Promise<CallToolResult> {
+  const task = args.task as string;
+  if (!task) return fail('Missing required parameter: task');
+
+  const mgr = await getOrCreateManager();
+
+  // Gather context from memory
+  const [memories, skillResults] = await Promise.all([
+    mgr.recall(task, 10),
+    mgr.searchSkills(task, 5),
+  ]);
+
+  // Separate past attempts from general knowledge
+  const pastAttempts = memories.filter((r) => r.sourceTier === 'episodic');
+  const knowledge = memories.filter((r) => r.sourceTier === 'semantic');
+  const skills = skillResults.map((r) => ({
+    name: r.skill.name,
+    description: r.skill.description,
+    successRate: r.skill.successRate,
+    confidence: r.skill.confidence,
+  }));
+
+  // Identify pitfalls (failed past attempts)
+  const pitfalls = pastAttempts
+    .filter((r) => r.entry.content.includes('FAILURE'))
+    .map((r) => r.entry.content);
+
+  return ok({
+    status: 'ok',
+    task,
+    pastAttempts: pastAttempts.map((r) => ({
+      content: r.entry.content,
+      score: r.score,
+    })),
+    knownPitfalls: pitfalls,
+    relevantKnowledge: knowledge.map((r) => ({
+      content: r.entry.content,
+      confidence: r.entry.confidence,
+    })),
+    applicableSkills: skills,
+    message: 'Phase 4 will add MCTS-based action tree and UCB1 scoring.',
+  });
+}
+
+async function handleSkills(args: Record<string, unknown>): Promise<CallToolResult> {
+  const action = (args.action as string) ?? 'list';
+  const limit = (args.limit as number) ?? 20;
+  const mgr = await getOrCreateManager();
+
+  if (action === 'search' && args.query) {
+    const results = await mgr.searchSkills(args.query as string, limit);
+    return ok({
+      status: 'ok',
+      action: 'search',
+      query: args.query,
+      resultCount: results.length,
+      skills: results.map((r) => ({
+        id: r.skill.id,
+        name: r.skill.name,
+        description: r.skill.description,
+        successRate: r.skill.successRate,
+        confidence: r.skill.confidence,
+        usageCount: r.skill.usageCount,
+        tags: r.skill.tags,
+        score: Math.round(r.score * 1000) / 1000,
+      })),
+    });
+  }
+
+  // Default: list all
+  const allSkills = await mgr.listSkills();
+  return ok({
+    status: 'ok',
+    action: 'list',
+    skillCount: allSkills.length,
+    skills: allSkills.slice(0, limit).map((s) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      successRate: s.successRate,
+      confidence: s.confidence,
+      usageCount: s.usageCount,
+      tags: s.tags,
+    })),
+  });
+}
+
+async function handleSkillStore(args: Record<string, unknown>): Promise<CallToolResult> {
+  const name = args.name as string;
+  const description = args.description as string;
+  const pattern = args.pattern as string;
+  if (!name || !description || !pattern) {
+    return fail('Missing required parameters: name, description, pattern');
+  }
+
+  const mgr = await getOrCreateManager();
+  const skill = await mgr.addSkill({
+    name,
+    description,
+    pattern,
+    preconditions: (args.preconditions as string[]) ?? [],
+    tags: (args.tags as string[]) ?? [],
+    sourceProject: process.cwd(),
+    sourceFiles: [],
+  });
+
+  return ok({
+    status: 'ok',
+    skillId: skill.id,
+    name: skill.name,
+    message: 'Skill stored successfully.',
+  });
+}
+
+async function handleStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+  try {
+    const mgr = await getOrCreateManager();
+    const stats = await mgr.status();
+    const stalenessStats = mgr.stalenessStats();
+
+    return ok({
+      status: 'ok',
+      tool: 'apex_status',
+      memory: {
+        working: stats.working,
+        episodic: stats.episodic,
+        semantic: stats.semantic,
+        procedural: stats.procedural,
+      },
+      snapshots: stats.snapshots,
+      staleness: stalenessStats,
+    });
+  } catch {
+    // Fall back to basic status if manager not initialised
+    return ok({
+      status: 'ok',
+      tool: 'apex_status',
+      memory: {
+        episodes: 0,
+        reflections: { micro: 0, meso: 0, macro: 0 },
+        skills: 0,
+        snapshots: 0,
+      },
+      message: 'APEX is running. Run apex_setup to initialise the memory system.',
+    });
+  }
+}
+
 async function handleConsolidate(_args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_consolidate', _args);
+  const mgr = await getOrCreateManager();
+  const report = await mgr.consolidate();
+
+  return ok({
+    status: 'ok',
+    report: {
+      timestamp: new Date(report.timestamp).toISOString(),
+      movedToEpisodic: report.movedToEpisodic,
+      movedToSemantic: report.movedToSemantic,
+      evicted: report.evicted,
+      merged: report.merged,
+    },
+  });
 }
 
 async function handleCurriculum(args: Record<string, unknown>): Promise<CallToolResult> {
+  // Phase 5 — curriculum engine not yet built
   return stub('apex_curriculum', args);
 }
 
 async function handleSetup(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_setup', args);
+  const projectPath = (args.projectPath as string) ?? process.cwd();
+  const dataPath = getProjectDataPath(projectPath);
+  const globalPath = getGlobalDataPath();
+
+  // Initialise project data store
+  const projectStore = new FileStore(dataPath);
+  await projectStore.init();
+
+  // Initialise global store
+  const globalStore = new FileStore(globalPath);
+  await globalStore.init();
+
+  // Scan project for profile
+  const profile = await scanProject(projectPath);
+
+  // Save project config
+  await projectStore.write('', 'config', {
+    projectPath,
+    profile,
+    createdAt: new Date().toISOString(),
+    version: '0.1.0',
+  });
+
+  // Create/update memory manager
+  memoryManager = new MemoryManager({
+    projectDataPath: dataPath,
+    globalDataPath: globalPath,
+    projectPath,
+    logger,
+  });
+  await memoryManager.init();
+
+  return ok({
+    status: 'ok',
+    projectPath,
+    dataPath,
+    globalPath,
+    profile: {
+      name: profile.name,
+      type: profile.type,
+      techStack: profile.techStack,
+      dependencies: profile.dependencies.length,
+    },
+    message: 'APEX initialised successfully.',
+  });
 }
 
 async function handleSnapshot(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_snapshot', args);
+  const mgr = await getOrCreateManager();
+  const name = args.name as string | undefined;
+  const snapshot = await mgr.createSnapshot(name);
+
+  return ok({
+    status: 'ok',
+    snapshotId: snapshot.id,
+    name: snapshot.name,
+    timestamp: new Date(snapshot.timestamp).toISOString(),
+    tierSizes: snapshot.tierSizes,
+  });
 }
 
 async function handleRollback(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_rollback', args);
+  const mgr = await getOrCreateManager();
+  const snapshotId = args.latest ? 'latest' : (args.snapshotId as string);
+  if (!snapshotId) return fail('Provide snapshotId or set latest: true');
+
+  const snapshot = await mgr.rollback(snapshotId);
+
+  return ok({
+    status: 'ok',
+    restoredSnapshot: snapshot.id,
+    name: snapshot.name,
+    timestamp: new Date(snapshot.timestamp).toISOString(),
+    tierSizes: snapshot.tierSizes,
+  });
 }
 
 async function handlePromote(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_promote', args);
+  const skillId = args.skillId as string;
+  if (!skillId) return fail('Missing required parameter: skillId');
+
+  const mgr = await getOrCreateManager();
+  const skill = await mgr.getSkill(skillId);
+  if (!skill) return fail(`Skill not found: ${skillId}`);
+
+  // Copy skill to global store
+  const globalStore = new FileStore(getGlobalDataPath());
+  await globalStore.init();
+  await globalStore.write('skills', skill.id, {
+    ...skill,
+    sourceProject: process.cwd(),
+  });
+
+  return ok({
+    status: 'ok',
+    skillId: skill.id,
+    name: skill.name,
+    message: `Skill "${skill.name}" promoted to global store.`,
+  });
 }
 
 async function handleImport(args: Record<string, unknown>): Promise<CallToolResult> {
-  return stub('apex_import', args);
+  const source = args.source as string;
+  if (!source) return fail('Missing required parameter: source');
+
+  const sourcePath = path.resolve(source);
+  const sourceDataPath = path.join(sourcePath, '.apex-data');
+  const sourceStore = new FileStore(sourceDataPath);
+
+  // Read skills from source project
+  const skillIds = await sourceStore.list('skills');
+  if (skillIds.length === 0) {
+    return ok({
+      status: 'ok',
+      imported: 0,
+      message: `No skills found in ${sourcePath}`,
+    });
+  }
+
+  const mgr = await getOrCreateManager();
+  let imported = 0;
+
+  for (const id of skillIds) {
+    const skill = await sourceStore.read<Record<string, unknown>>('skills', id);
+    if (skill) {
+      await mgr.addSkill({
+        name: skill.name as string,
+        description: skill.description as string,
+        pattern: skill.pattern as string,
+        preconditions: (skill.preconditions as string[]) ?? [],
+        tags: (skill.tags as string[]) ?? [],
+        sourceProject: sourcePath,
+        sourceFiles: (skill.sourceFiles as string[]) ?? [],
+      });
+      imported++;
+    }
+  }
+
+  return ok({
+    status: 'ok',
+    source: sourcePath,
+    imported,
+    message: `Imported ${imported} skills from ${sourcePath}.`,
+  });
 }
 
 // ── Exported handler map ──────────────────────────────────────────

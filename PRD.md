@@ -1,9 +1,9 @@
 # APEX: Adaptive Personal Experience eXtraction
 ## Product Requirements Document
 
-**Version:** 0.5.1
+**Version:** 0.6.0
 **Date:** 2026-04-02
-**Status:** Phase 1 Complete — Foundation & MCP Server Scaffold
+**Status:** Phase 2 Complete — Hierarchical Memory System
 
 ---
 
@@ -43,7 +43,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | Phase | Name | Status | Notes |
 |-------|------|--------|-------|
 | **1** | Foundation & MCP Server Scaffold | ✅ **Complete** | MCP server, 15 tool defs, types, utilities, project scanner. Handlers stubbed. |
-| **2** | Hierarchical Memory System | 📋 Not started | 4-tier memory, staleness detection, snapshots |
+| **2** | Hierarchical Memory System | ✅ **Complete** | 4-tier memory, staleness detection, snapshots, embedding store, memory manager. 12/15 handlers live. |
 | **3** | Multi-Level Reflection Engine | 📋 Not started | Micro/meso/macro data assemblers, reflection storage |
 | **4** | MCTS Planning Engine | 📋 Not started | Experience-backed plan context, action history tree |
 | **5** | Curriculum & Experience Replay | 📋 Not started | Difficulty estimation, curriculum generation, skill extraction |
@@ -403,9 +403,12 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ---
 
-## Phase 2: Hierarchical Memory System
+## Phase 2: Hierarchical Memory System ✅ COMPLETE
 
 **Goal:** Implement the 4-tier memory architecture inspired by MemoryOS, with OS-style segment-paged storage and heat-based lifecycle management.
+
+**Completed:** 2026-04-02
+**Lines of code:** ~4,010 (TypeScript, src/memory/ + handlers rewrite)
 
 ### Memory Tiers
 
@@ -418,62 +421,62 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Working Memory** (`src/memory/working.ts`)
-  - [ ] Fixed-size dialogue page queue (configurable, default 10)
-  - [ ] Dialogue chain construction (contextual linking between pages)
-  - [ ] FIFO overflow to Episodic Memory
-  - [ ] Full context retrieval (all pages returned for current session)
+- [x] **Working Memory** (`src/memory/working.ts`) ✅
+  - [x] Fixed-size dialogue page queue (configurable, default 10)
+  - [x] Dialogue chain construction (contextual linking between pages)
+  - [x] FIFO overflow to Episodic Memory
+  - [x] Full context retrieval (all pages returned for current session)
 
-- [ ] **Episodic Memory** (`src/memory/episodic.ts`)
-  - [ ] Segment-paged storage: episodes grouped into topical segments
-  - [ ] Segment similarity scoring (cosine embedding + Jaccard keywords, per MemoryOS Eq.3)
-  - [ ] Heat score computation: `Heat = alpha * N_visit + beta * L_interaction + gamma * R_recency`
-  - [ ] Heat-based eviction when capacity exceeded
-  - [ ] Two-stage retrieval: segment selection -> page selection within segment
-  - [ ] Heat score update on retrieval (visit count + recency refresh)
+- [x] **Episodic Memory** (`src/memory/episodic.ts`) ✅
+  - [x] Segment-paged storage: episodes grouped into topical segments
+  - [x] Segment similarity scoring (cosine embedding + Jaccard keywords, per MemoryOS Eq.3)
+  - [x] Heat score computation: `Heat = alpha * N_visit + beta * L_interaction + gamma * R_recency`
+  - [x] Heat-based eviction when capacity exceeded
+  - [x] Two-stage retrieval: segment selection -> page selection within segment
+  - [x] Heat score update on retrieval (visit count + recency refresh)
 
-- [ ] **Semantic Memory** (`src/memory/semantic.ts`)
-  - [ ] Knowledge entries: facts, rules, error taxonomy entries
-  - [ ] Incremental update from episodic memory consolidation
-  - [ ] Embedding-based retrieval with top-k
-  - [ ] Deduplication via content hashing
-  - [ ] Merge/update existing entries when new info overlaps
+- [x] **Semantic Memory** (`src/memory/semantic.ts`) ✅
+  - [x] Knowledge entries: facts, rules, error taxonomy entries
+  - [x] Incremental update from episodic memory consolidation
+  - [x] Embedding-based retrieval with top-k
+  - [x] Deduplication via content hashing
+  - [x] Merge/update existing entries when new info overlaps
 
-- [ ] **Procedural Memory** (`src/memory/procedural.ts`)
-  - [ ] Skill registry: name -> Skill definition
-  - [ ] Skill composition: combine atomic skills into compound skills
-  - [ ] Success rate tracking per skill (rolling window)
-  - [ ] Skill retrieval by task similarity
-  - [ ] File-backed persistence (JSON + embeddings binary)
+- [x] **Procedural Memory** (`src/memory/procedural.ts`) ✅
+  - [x] Skill registry: name -> Skill definition
+  - [x] Skill composition: combine atomic skills into compound skills
+  - [x] Success rate tracking per skill (rolling window)
+  - [x] Skill retrieval by task similarity
+  - [x] File-backed persistence (JSON + embeddings binary)
 
-- [ ] **Memory Manager** (`src/memory/manager.ts`)
-  - [ ] Unified interface across all tiers
-  - [ ] Cross-tier retrieval: query project tiers first, then global `~/.apex/`, merge and rank
-  - [ ] Consolidation pipeline: Working -> Episodic -> Semantic (triggered by thresholds)
-  - [ ] Skill extraction pipeline: Episodic -> Procedural (on repeated success patterns)
-  - [ ] Memory stats and health monitoring
-  - [ ] Persistence: save/load full memory state to `.apex-data/`
+- [x] **Memory Manager** (`src/memory/manager.ts`) ✅
+  - [x] Unified interface across all tiers
+  - [x] Cross-tier retrieval: query project tiers first, then global `~/.apex/`, merge and rank
+  - [x] Consolidation pipeline: Working -> Episodic -> Semantic (triggered by thresholds)
+  - [x] Skill extraction pipeline: Episodic -> Procedural (on repeated success patterns)
+  - [x] Memory stats and health monitoring
+  - [x] Persistence: save/load full memory state to `.apex-data/`
 
-- [ ] **Staleness detector** (`src/memory/staleness.ts`)
-  - [ ] Track source files referenced by each memory entry / skill
-  - [ ] On recall: check if source files changed (git diff or mtime comparison)
-  - [ ] Tag stale results: `[STALE — source files changed since learned]`
-  - [ ] Check if referenced functions/classes still exist (fast grep)
-  - [ ] Tag invalid results: `[POSSIBLY INVALID — referenced code not found]`
-  - [ ] Staleness stats in `apex_status` output
+- [x] **Staleness detector** (`src/memory/staleness.ts`) ✅
+  - [x] Track source files referenced by each memory entry / skill
+  - [x] On recall: check if source files changed (git diff or mtime comparison)
+  - [x] Tag stale results: `[STALE — source files changed since learned]`
+  - [x] Check if referenced functions/classes still exist (fast grep)
+  - [x] Tag invalid results: `[POSSIBLY INVALID — referenced code not found]`
+  - [x] Staleness stats in `apex_status` output
 
-- [ ] **Snapshot manager** (`src/memory/snapshots.ts`)
-  - [ ] Auto-snapshot before consolidation (rolling window, keep last N)
-  - [ ] Named snapshots via `apex_snapshot` tool
-  - [ ] Restore from snapshot via `apex_rollback` tool
-  - [ ] Lightweight: snapshot = memory index + tier metadata, not full episode data
-  - [ ] Snapshot listing and cleanup
+- [x] **Snapshot manager** (`src/memory/snapshots.ts`) ✅
+  - [x] Auto-snapshot before consolidation (rolling window, keep last N)
+  - [x] Named snapshots via `apex_snapshot` tool
+  - [x] Restore from snapshot via `apex_rollback` tool
+  - [x] Lightweight: snapshot = memory index + tier metadata, not full episode data
+  - [x] Snapshot listing and cleanup
 
-- [ ] **Memory-efficient embedding storage** (`src/memory/embedding-store.ts`)
-  - [ ] Binary quantization option (1-bit embeddings, 32x compression)
-  - [ ] Int8 scalar quantization option (4x compression)
-  - [ ] Memory-mapped file backing for large embedding sets
-  - [ ] Batch similarity search with SIMD-friendly layout
+- [x] **Memory-efficient embedding storage** (`src/memory/embedding-store.ts`) ✅
+  - [x] Binary quantization option (1-bit embeddings, 32x compression)
+  - [x] Int8 scalar quantization option (4x compression)
+  - [x] Memory-mapped file backing for large embedding sets
+  - [x] Batch similarity search with SIMD-friendly layout
 
 ---
 
