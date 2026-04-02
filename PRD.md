@@ -3,7 +3,7 @@
 
 **Version:** 0.7.0
 **Date:** 2026-04-02
-**Status:** Phase 4 Complete — MCTS Planning Engine
+**Status:** Phase 5 Complete — Curriculum & Experience Replay
 
 ---
 
@@ -46,7 +46,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **2** | Hierarchical Memory System | ✅ **Complete** | 4-tier memory, staleness detection, snapshots, embedding store, memory manager. 12/15 handlers live. |
 | **3** | Multi-Level Reflection Engine | ✅ **Complete** | Micro/meso/macro data assemblers, reflection storage |
 | **4** | MCTS Planning Engine | ✅ **Complete** | Experience-backed plan context, action history tree, plan tracker, value estimation |
-| **5** | Curriculum & Experience Replay | 📋 Not started | Difficulty estimation, curriculum generation, skill extraction |
+| **5** | Curriculum & Experience Replay | ✅ **Complete** | Replay buffer, difficulty estimator, curriculum generator, skill extractor |
 | **6** | Evolution Engine | 📋 Not started | Self-evaluation, knowledge distillation, metrics |
 | **7** | Cross-Project Learning | 📋 Not started | Global store, skill promotion, import/export |
 | **8** | Hooks, CLAUDE.md & E2E Integration | 📋 Not started | Hooks, CLAUDE.md effectiveness tracking, smoke tests |
@@ -565,31 +565,31 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Experience Replay Buffer** (`src/curriculum/replay-buffer.ts`)
-  - [ ] Prioritized sampling by TD-error / surprise score
-  - [ ] Ring buffer backing (fixed memory, O(1) operations)
-  - [ ] Importance sampling weights for bias correction
-  - [ ] Compressed episode storage (quantized embeddings + delta encoding)
-  - [ ] Configurable capacity with automatic eviction
+- [x] **Experience Replay Buffer** (`src/curriculum/replay-buffer.ts`)
+  - [x] Prioritized sampling by TD-error / surprise score
+  - [x] Ring buffer backing (fixed memory, O(1) operations)
+  - [x] Importance sampling weights for bias correction
+  - [x] Compressed episode storage (quantized embeddings + delta encoding)
+  - [x] Configurable capacity with automatic eviction
 
-- [ ] **Difficulty estimator** (`src/curriculum/difficulty.ts`)
-  - [ ] Task complexity scoring (number of steps, tool calls, constraints)
-  - [ ] Historical difficulty: success rate across past attempts
-  - [ ] Embedding-based similarity to previously solved tasks
-  - [ ] Composite difficulty score combining all signals
+- [x] **Difficulty estimator** (`src/curriculum/difficulty.ts`)
+  - [x] Task complexity scoring (number of steps, tool calls, constraints)
+  - [x] Historical difficulty: success rate across past attempts
+  - [x] Embedding-based similarity to previously solved tasks
+  - [x] Composite difficulty score combining all signals
 
-- [ ] **Curriculum generator** (`src/curriculum/generator.ts`)
-  - [ ] Automatic task proposal based on current skill level
-  - [ ] Zone of Proximal Development targeting (not too easy, not too hard)
-  - [ ] Domain coverage tracking (ensure breadth, not just depth)
-  - [ ] Progressive complexity: unlock harder tasks as skills improve
-  - [ ] Failure-directed curriculum: generate tasks targeting weak areas
+- [x] **Curriculum generator** (`src/curriculum/generator.ts`)
+  - [x] Automatic task proposal based on current skill level
+  - [x] Zone of Proximal Development targeting (not too easy, not too hard)
+  - [x] Domain coverage tracking (ensure breadth, not just depth)
+  - [x] Progressive complexity: unlock harder tasks as skills improve
+  - [x] Failure-directed curriculum: generate tasks targeting weak areas
 
-- [ ] **Skill extractor** (`src/curriculum/skill-extractor.ts`)
-  - [ ] Identify reusable action subsequences from successful trajectories
-  - [ ] Skill abstraction: parameterize concrete actions into general skills
-  - [ ] Skill verification: test extracted skill on similar tasks
-  - [ ] Skill composition: detect when skills chain together reliably
+- [x] **Skill extractor** (`src/curriculum/skill-extractor.ts`)
+  - [x] Identify reusable action subsequences from successful trajectories
+  - [x] Skill abstraction: parameterize concrete actions into general skills
+  - [x] Skill verification: test extracted skill on similar tasks
+  - [x] Skill composition: detect when skills chain together reliably
 
 ---
 

@@ -20,6 +20,9 @@ import { PlanContextBuilder } from '../planning/context.js';
 import { ActionTree } from '../planning/action-tree.js';
 import { PlanTracker } from '../planning/tracker.js';
 import { ValueEstimator } from '../planning/value.js';
+import { CurriculumGenerator } from '../curriculum/generator.js';
+import { DifficultyEstimator } from '../curriculum/difficulty.js';
+import { SkillExtractor } from '../curriculum/skill-extractor.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +60,7 @@ let planContextBuilder: PlanContextBuilder | null = null;
 let actionTree: ActionTree | null = null;
 let planTracker: PlanTracker | null = null;
 let valueEstimator: ValueEstimator | null = null;
+let curriculumGenerator: CurriculumGenerator | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -452,8 +456,28 @@ async function handleConsolidate(_args: Record<string, unknown>): Promise<CallTo
 }
 
 async function handleCurriculum(args: Record<string, unknown>): Promise<CallToolResult> {
-  // Phase 5 — curriculum engine not yet built
-  return stub('apex_curriculum', args);
+  const root = (args.projectPath as string) ?? process.cwd();
+  const mgr = await getOrCreateManager(root);
+
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!curriculumGenerator) {
+    curriculumGenerator = new CurriculumGenerator({ fileStore: store, logger });
+  }
+
+  const episodes = await store.readAll<Episode>('episodes');
+  const skills = await mgr.listSkills();
+
+  const suggestions = curriculumGenerator.suggest(episodes, skills, {
+    domain: args.domain as string | undefined,
+    count: (args.count as number) ?? 3,
+  });
+
+  return ok({
+    status: 'ok',
+    suggestions,
+  });
 }
 
 async function handleSetup(args: Record<string, unknown>): Promise<CallToolResult> {
