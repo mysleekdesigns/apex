@@ -48,3 +48,26 @@ export {
   type PromotionResult,
   type PromotionPipelineOptions,
 } from './promotion.js';
+
+export {
+  AgentPopulation,
+  type AgentPopulationOptions,
+  type EvolutionCycleResult,
+  type PopulationStatus,
+} from './multi-agent.js';
+
+export {
+  ToolFactory,
+  type ToolFactoryOptions,
+} from './tool-creation.js';
+
+export {
+  ArchitectureSearch,
+  computeCompositeScore,
+  type MutationType,
+  type MutationRecord,
+  type MutationResult,
+  type RollbackSuggestion,
+  type ToolUsageStats,
+  type ArchitectureSearchOptions,
+} from './architecture-search.js';

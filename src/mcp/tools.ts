@@ -383,4 +383,283 @@ export const tools: ToolDefinition[] = [
       required: ['source'],
     },
   },
+
+  // ── 16. apex_foresight_predict ─────────────────────────────────
+  {
+    name: 'apex_foresight_predict',
+    description:
+      'Record a prediction before starting a multi-step task. Captures expected outcome, duration, steps, and risk factors for later comparison.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description: 'ID of the task or plan being predicted',
+        },
+        predictedSuccess: {
+          type: 'boolean',
+          description: 'Whether the task is expected to succeed',
+        },
+        expectedDuration: {
+          type: 'number',
+          description: 'Expected wall-clock duration in milliseconds',
+        },
+        expectedSteps: {
+          type: 'number',
+          description: 'Expected number of steps to complete the task',
+        },
+        riskFactors: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Known risk factors that could cause failure',
+        },
+        confidence: {
+          type: 'number',
+          description: 'Confidence in this prediction (0.0 to 1.0, default 0.5)',
+        },
+      },
+      required: ['taskId', 'predictedSuccess', 'expectedDuration', 'expectedSteps'],
+    },
+  },
+
+  // ── 17. apex_foresight_check ───────────────────────────────────
+  {
+    name: 'apex_foresight_check',
+    description:
+      'Check divergence during task execution. Compares current progress against the original prediction and returns an adaptation signal (continue, adjust, reflect, or abort).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        predictionId: {
+          type: 'string',
+          description: 'ID of the prediction to check against',
+        },
+        stepIndex: {
+          type: 'number',
+          description: 'Zero-based index of the current step',
+        },
+        stepSuccess: {
+          type: 'boolean',
+          description: 'Whether the current step succeeded',
+        },
+        elapsedMs: {
+          type: 'number',
+          description: 'Total elapsed time so far in milliseconds',
+        },
+        completedSteps: {
+          type: 'number',
+          description: 'Total number of steps completed so far (including this one)',
+        },
+        stepDescription: {
+          type: 'string',
+          description: 'Optional description of what happened in this step',
+        },
+      },
+      required: ['predictionId', 'stepIndex', 'stepSuccess', 'elapsedMs', 'completedSteps'],
+    },
+  },
+
+  // ── 18. apex_foresight_resolve ─────────────────────────────────
+  {
+    name: 'apex_foresight_resolve',
+    description:
+      'Compare a prediction with the actual outcome after task completion. Calculates a surprise score (0 = exact match, 1 = complete mismatch) and auto-triggers reflection when surprise is high.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        predictionId: {
+          type: 'string',
+          description: 'ID of the prediction to resolve',
+        },
+        actualOutcome: {
+          type: 'object',
+          description: 'The actual outcome of the task',
+          properties: {
+            success: {
+              type: 'boolean',
+              description: 'Whether the task actually succeeded',
+            },
+            description: {
+              type: 'string',
+              description: 'Summary of what actually happened',
+            },
+            errorType: {
+              type: 'string',
+              description: 'Error classification if the task failed',
+            },
+            duration: {
+              type: 'number',
+              description: 'Actual duration in milliseconds',
+            },
+          },
+          required: ['success', 'description', 'duration'],
+        },
+        episodeId: {
+          type: 'string',
+          description: 'Optional episode ID for linking to reflection',
+        },
+      },
+      required: ['predictionId', 'actualOutcome'],
+    },
+  },
+
+  // ── 19. apex_population_status ────────────────────────────────
+  {
+    name: 'apex_population_status',
+    description:
+      'Show agent population stats, rankings, and specializations. Returns the current state of the multi-agent co-evolution system.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+
+  // ── 20. apex_population_evolve ────────────────────────────────
+  {
+    name: 'apex_population_evolve',
+    description:
+      'Trigger one evolution cycle on the agent population. Evaluates fitness, selects parents via tournament, breeds offspring, applies mutations, and cross-pollinates skills.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description: 'Optional task ID to run competitive evaluation before evolving',
+        },
+        taskDomain: {
+          type: 'string',
+          description: 'Domain of the task (e.g. "testing", "refactoring") — required if taskId is provided',
+        },
+        taskReward: {
+          type: 'number',
+          description: 'Reward achieved on the task (0.0 to 1.0) — required if taskId is provided',
+        },
+        taskSuccess: {
+          type: 'boolean',
+          description: 'Whether the task succeeded — required if taskId is provided',
+        },
+      },
+    },
+  },
+
+  // ── 21. apex_tool_propose ───────────────────────────────────────
+  {
+    name: 'apex_tool_propose',
+    description:
+      'Propose new tools from recurring successful action patterns. Analyses recent episodes and extracts multi-step patterns that appear frequently with high success rate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        minFrequency: {
+          type: 'number',
+          description: 'Minimum number of episodes a pattern must appear in (default: 3)',
+        },
+        minSuccessRate: {
+          type: 'number',
+          description: 'Minimum success rate for a pattern to qualify (default: 0.8)',
+        },
+      },
+    },
+  },
+
+  // ── 22. apex_tool_verify ────────────────────────────────────────
+  {
+    name: 'apex_tool_verify',
+    description:
+      'Run verification checks on a proposed tool. Scores preconditions, generalisability, clarity, reusability, and safety. Updates the tool status to verified, pending, or rejected.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        toolId: {
+          type: 'string',
+          description: 'ID of the tool to verify',
+        },
+      },
+      required: ['toolId'],
+    },
+  },
+
+  // ── 23. apex_tool_list ──────────────────────────────────────────
+  {
+    name: 'apex_tool_list',
+    description:
+      'List all created tools with their mastery metrics. Optionally filter by verification status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['pending', 'verified', 'rejected', 'deprecated'],
+          description: 'Filter by verification status',
+        },
+      },
+    },
+  },
+
+  // ── 24. apex_tool_compose ───────────────────────────────────────
+  {
+    name: 'apex_tool_compose',
+    description:
+      'Create composite tools from sequences of existing tools that chain together reliably. Detects recurring tool pipelines across successful episodes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        toolIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: specific tool IDs to compose. If omitted, auto-detects chains from episodes.',
+        },
+      },
+    },
+  },
+  // ── 25. apex_arch_status ──────────────────────────────────────
+  {
+    name: 'apex_arch_status',
+    description:
+      'Show current architecture config, performance history, and best config found. Returns the state of the adaptive architecture search system.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+
+  // ── 26. apex_arch_mutate ──────────────────────────────────────
+  {
+    name: 'apex_arch_mutate',
+    description:
+      'Propose and apply a config mutation to the current architecture. Supports toggling subsystems, adjusting frequencies, memory capacities, and hyperparameters. Tracks rollback state automatically.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mutationType: {
+          type: 'string',
+          enum: [
+            'toggle-subsystem',
+            'adjust-reflection-frequency',
+            'adjust-consolidation-frequency',
+            'adjust-memory-capacity',
+            'adjust-exploration-rate',
+            'adjust-consolidation-threshold',
+            'adjust-performance-window',
+          ],
+          description: 'Type of mutation to apply. If omitted, a random mutation is selected.',
+        },
+        biased: {
+          type: 'boolean',
+          description: 'If true, sample biased toward high-performing configs (default: false)',
+        },
+      },
+    },
+  },
+
+  // ── 27. apex_arch_suggest ─────────────────────────────────────
+  {
+    name: 'apex_arch_suggest',
+    description:
+      'Get suggestions for config and prompt improvements based on performance data and tool usage patterns. Returns rollback recommendations if performance has degraded.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];

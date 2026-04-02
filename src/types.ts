@@ -347,6 +347,95 @@ export interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-agent co-evolution types
+// ---------------------------------------------------------------------------
+
+/**
+ * A virtual agent profile in the evolutionary population.
+ *
+ * Each agent has its own strategy preferences, personal skill weightings,
+ * and performance metrics. Agents share a semantic memory pool but compete
+ * and cooperate via cross-pollination of skills.
+ */
+export interface AgentProfile {
+  /** Unique identifier for this agent. */
+  id: string;
+
+  /** Human-readable name for this agent. */
+  name: string;
+
+  /** Preferred strategy identifiers this agent tends to use. */
+  strategies: string[];
+
+  /** Personal weight modifiers for skills (skillId -> weight in [0, 2]). */
+  skillWeights: Record<string, number>;
+
+  /** Aggregate performance metrics for this agent. */
+  metrics: {
+    /** Total number of tasks this agent has been evaluated on. */
+    tasksSolved: number;
+    /** Fraction of tasks solved successfully, in [0, 1]. */
+    successRate: number;
+    /** Mean reward across all evaluations. */
+    avgReward: number;
+    /** Domains this agent excels at (based on above-average performance). */
+    specializations: string[];
+  };
+
+  /** Generation number (0 = seed, incremented on each evolution cycle). */
+  generation: number;
+
+  /** IDs of the parent agents this agent was bred from. */
+  parentIds: string[];
+
+  /** Unix-epoch ms timestamp of when this agent was created. */
+  createdAt: number;
+
+  /** Unix-epoch ms timestamp of the last update to this agent. */
+  updatedAt: number;
+}
+
+/**
+ * Configuration for the agent population and evolutionary process.
+ */
+export interface PopulationConfig {
+  /** Number of agents in the population. Default: 5. */
+  size: number;
+
+  /** Number of agents sampled for tournament selection. Default: 3. */
+  tournamentSize: number;
+
+  /** Probability that a skill is transferred during cross-pollination, in [0, 1]. Default: 0.3. */
+  crossPollinationRate: number;
+
+  /** Probability that a strategy is mutated during breeding, in [0, 1]. Default: 0.1. */
+  mutationRate: number;
+
+  /** Number of top agents preserved unchanged across generations. Default: 1. */
+  elitismCount: number;
+
+  /** Number of recent episodes to consider when computing fitness. Default: 20. */
+  evaluationWindow: number;
+}
+
+/**
+ * Result of a competitive evaluation where multiple agents are scored on a task.
+ */
+export interface CompetitiveResult {
+  /** ID of the task that was evaluated. */
+  taskId: string;
+
+  /** Agents ranked by score (descending). */
+  rankings: Array<{ agentId: string; score: number; strategies: string[] }>;
+
+  /** ID of the highest-scoring agent. */
+  bestAgent: string;
+
+  /** Unix-epoch ms timestamp of when this evaluation was performed. */
+  timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
 // Task / curriculum types
 // ---------------------------------------------------------------------------
 
@@ -377,6 +466,308 @@ export interface Task {
 
   /** Optional skill IDs or names that may help accomplish the task. */
   suggestedSkills?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Foresight types
+// ---------------------------------------------------------------------------
+
+/**
+ * A signal emitted during multi-step task execution indicating whether the
+ * current trajectory is diverging from the original prediction.
+ */
+export interface AdaptationSignal {
+  /** Zero-based index of the step that triggered the signal. */
+  stepIndex: number;
+
+  /** How far the current trajectory has diverged from prediction (0 = on-track, 1 = fully diverged). */
+  divergenceScore: number;
+
+  /** Recommended course of action based on divergence. */
+  recommendation: 'continue' | 'adjust' | 'reflect' | 'abort';
+
+  /** Human-readable explanation of why this recommendation was made. */
+  reason: string;
+
+  /** Unix-epoch millisecond timestamp of when the signal was generated. */
+  timestamp: number;
+}
+
+/**
+ * A forward-looking prediction recorded before executing a multi-step task.
+ *
+ * After execution completes, the actual outcome is compared against the
+ * prediction to compute a surprise score. High surprise triggers automatic
+ * reflection.
+ */
+export interface ForesightPrediction {
+  /** Unique identifier for this prediction. */
+  id: string;
+
+  /** ID of the task or plan this prediction is associated with. */
+  taskId: string;
+
+  /** The predicted outcome before execution. */
+  predictedOutcome: {
+    /** Whether the task is expected to succeed. */
+    success: boolean;
+    /** Expected wall-clock duration in milliseconds. */
+    expectedDuration: number;
+    /** Expected number of steps to complete the task. */
+    expectedSteps: number;
+    /** Known risk factors that could cause failure. */
+    riskFactors: string[];
+    /** Confidence in this prediction (0 = no confidence, 1 = certain). */
+    confidence: number;
+  };
+
+  /** The actual outcome after execution (populated by resolve). */
+  actualOutcome?: Outcome;
+
+  /** Surprise score comparing predicted vs actual (0 = exact match, 1 = complete mismatch). */
+  surpriseScore?: number;
+
+  /** Adaptation signals emitted during execution. */
+  adaptationSignals: AdaptationSignal[];
+
+  /** Unix-epoch millisecond timestamp of when the prediction was created. */
+  timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
+// Tool creation types (Voyager-inspired)
+// ---------------------------------------------------------------------------
+
+/**
+ * A tool definition created by the ToolFactory from recurring successful
+ * action patterns. Represents a parameterized, verifiable action template
+ * that the agent can invoke.
+ */
+export interface ToolDefinitionApex {
+  /** Unique identifier for this tool. */
+  id: string;
+
+  /** Short human-readable name (e.g. `"lint-fix-commit"`). */
+  name: string;
+
+  /** Detailed description of what the tool does. */
+  description: string;
+
+  /** Input parameters extracted from variable parts of the pattern. */
+  inputSchema: {
+    parameters: Array<{
+      name: string;
+      type: string;
+      description: string;
+      required: boolean;
+    }>;
+  };
+
+  /** The action template encoded as a string. */
+  pattern: string;
+
+  /** Conditions that must hold before this tool can be used. */
+  preconditions: string[];
+
+  /** Description of the expected output when the tool succeeds. */
+  expectedOutput: string;
+
+  /** Episode IDs this tool was extracted from. */
+  sourceEpisodes: string[];
+
+  /** Verification lifecycle status. */
+  verificationStatus: 'pending' | 'verified' | 'rejected' | 'deprecated';
+
+  /** Quality score assigned by the verification sandbox, in `[0, 1]`. */
+  verificationScore: number;
+
+  /** Mastery tracking metrics. */
+  masteryMetrics: {
+    /** Total number of times this tool has been used. */
+    usageCount: number;
+    /** Success rate across all uses, in `[0, 1]`. */
+    successRate: number;
+    /** Average duration of tool usage in milliseconds. */
+    avgDuration: number;
+    /** Descriptions of contexts where this tool failed. */
+    failureContexts: string[];
+    /** Unix-epoch millisecond timestamp of last usage. */
+    lastUsed: number;
+  };
+
+  /** If this is a composite tool, the IDs of its component tools. */
+  composedFrom?: string[];
+
+  /** Unix-epoch millisecond timestamp of creation. */
+  createdAt: number;
+
+  /** Unix-epoch millisecond timestamp of last update. */
+  updatedAt: number;
+
+  /** Free-form tags for categorisation and retrieval. */
+  tags: string[];
+}
+
+/**
+ * A composite tool that chains multiple tools together in a pipeline.
+ * Created when Tool A's output reliably feeds into Tool B's input.
+ */
+export interface ToolComposition {
+  /** Unique identifier for this composition. */
+  id: string;
+
+  /** Short human-readable name for the pipeline. */
+  name: string;
+
+  /** Description of what the pipeline accomplishes. */
+  description: string;
+
+  /** Ordered steps in the pipeline. */
+  steps: Array<{
+    /** ID of the tool used in this step. */
+    toolId: string;
+    /** Mapping from previous step output fields to this step's input parameters. */
+    inputMapping: Record<string, string>;
+  }>;
+
+  /** Empirical success rate across all uses, in `[0, 1]`. */
+  successRate: number;
+
+  /** Total number of times this pipeline has been used. */
+  usageCount: number;
+
+  /** Unix-epoch millisecond timestamp of creation. */
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Architecture search types
+// ---------------------------------------------------------------------------
+
+/**
+ * Describes the full APEX architecture configuration including which
+ * subsystems are active, their interconnections, and tunable hyperparameters.
+ */
+export interface ArchitectureConfig {
+  /** Unique identifier for this configuration. */
+  id: string;
+
+  /** The core agent hyperparameters. */
+  agentConfig: AgentConfig;
+
+  /** Flags controlling which subsystems are active. */
+  subsystemFlags: {
+    microReflection: boolean;
+    mesoReflection: boolean;
+    macroReflection: boolean;
+    foresight: boolean;
+    curriculum: boolean;
+    crossProject: boolean;
+  };
+
+  /** Trigger reflection every N episodes. */
+  reflectionFrequency: number;
+
+  /** Trigger consolidation every N episodes. */
+  consolidationFrequency: number;
+
+  /** Number of episodes to average when computing performance. */
+  performanceWindow: number;
+
+  /** ID of the parent config this was mutated from. */
+  parentConfigId?: string;
+
+  /** Generation number in the search lineage. */
+  generation: number;
+
+  /** Unix-epoch millisecond timestamp of when this config was created. */
+  createdAt: number;
+}
+
+/**
+ * Performance metrics measured under a specific architecture configuration.
+ */
+export interface ConfigPerformance {
+  /** ID of the config these metrics were measured under. */
+  configId: string;
+
+  /** Individual performance metric values. */
+  metrics: {
+    /** Fraction of episodes that succeeded (0-1). */
+    successRate: number;
+    /** Mean reward across episodes. */
+    avgReward: number;
+    /** Ratio of useful recalls to total recalls (0-1). */
+    memoryEfficiency: number;
+    /** Average relevance score of recall results (0-1). */
+    recallQuality: number;
+    /** Fraction of reflections that led to improved outcomes (0-1). */
+    reflectionValue: number;
+  };
+
+  /** Number of episodes observed under this config. */
+  episodeCount: number;
+
+  /** Unix-epoch ms timestamp of when measurement started. */
+  startTime: number;
+
+  /** Unix-epoch ms timestamp of when measurement ended. */
+  endTime: number;
+}
+
+/**
+ * Persistent state of the architecture search process.
+ */
+export interface ArchitectureSearchState {
+  /** ID of the currently active config. */
+  currentConfigId: string;
+
+  /** History of all configs tried with their performance. */
+  configHistory: Array<{ configId: string; performance: ConfigPerformance }>;
+
+  /** ID of the best-performing config found so far. */
+  bestConfigId: string;
+
+  /** Composite score of the best config. */
+  bestScore: number;
+
+  /** Current generation of the search. */
+  generation: number;
+
+  /** Maximum number of configs to evaluate. */
+  searchBudget: number;
+
+  /** Remaining configs that can still be tried. */
+  searchesRemaining: number;
+}
+
+/**
+ * A suggestion for modifying the CLAUDE.md prompt based on usage patterns.
+ */
+export interface PromptSuggestion {
+  /** Unique identifier for this suggestion. */
+  id: string;
+
+  /** Which section of CLAUDE.md this suggestion targets. */
+  section: string;
+
+  /** The current text in that section (or a summary). */
+  currentText: string;
+
+  /** The suggested replacement or addition. */
+  suggestedText: string;
+
+  /** Why this change is being suggested. */
+  reason: string;
+
+  /** What improvement is expected from this change. */
+  expectedImpact: string;
+
+  /** Confidence that this suggestion will help (0-1). */
+  confidence: number;
+
+  /** Unix-epoch millisecond timestamp. */
+  timestamp: number;
 }
 
 // ---------------------------------------------------------------------------

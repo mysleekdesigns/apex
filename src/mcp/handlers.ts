@@ -28,6 +28,11 @@ import { PortabilityManager } from '../memory/portability.js';
 import { ProjectSimilarityIndex } from '../memory/project-index.js';
 import { SkillPromotionPipeline } from '../evolution/promotion.js';
 import { EffectivenessTracker } from '../integration/effectiveness-tracker.js';
+import { ArchitectureSearch } from '../evolution/architecture-search.js';
+import { ForesightEngine } from '../reflection/foresight.js';
+import { AgentPopulation } from '../evolution/multi-agent.js';
+import { ToolFactory } from '../evolution/tool-creation.js';
+import type { ToolDefinitionApex } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,6 +75,10 @@ let globalStoreManager: GlobalStoreManager | null = null;
 let crossProjectQuery: CrossProjectQuery | null = null;
 let projectIndex: ProjectSimilarityIndex | null = null;
 let effectivenessTracker: EffectivenessTracker | null = null;
+let foresightEngine: ForesightEngine | null = null;
+let agentPopulation: AgentPopulation | null = null;
+let toolFactory: ToolFactory | null = null;
+let architectureSearch: ArchitectureSearch | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -776,6 +785,552 @@ async function handleImport(args: Record<string, unknown>): Promise<CallToolResu
   });
 }
 
+// ---------------------------------------------------------------------------
+// Foresight handlers
+// ---------------------------------------------------------------------------
+
+async function getOrCreateForesightEngine(projectPath?: string): Promise<ForesightEngine> {
+  if (foresightEngine) return foresightEngine;
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+  foresightEngine = new ForesightEngine({
+    fileStore: store,
+    logger,
+    onSurpriseTriggered: async (predictionId, surpriseScore) => {
+      logger.info('Surprise threshold exceeded — auto-reflection recommended', {
+        predictionId,
+        surpriseScore,
+      });
+    },
+  });
+  return foresightEngine;
+}
+
+async function handleForesightPredict(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_foresight_predict');
+
+  const taskId = args.taskId as string;
+  const predictedSuccess = args.predictedSuccess as boolean;
+  const expectedDuration = args.expectedDuration as number;
+  const expectedSteps = args.expectedSteps as number;
+  if (!taskId || predictedSuccess === undefined || !expectedDuration || !expectedSteps) {
+    return fail('Missing required parameters: taskId, predictedSuccess, expectedDuration, expectedSteps');
+  }
+
+  const engine = await getOrCreateForesightEngine();
+  const prediction = await engine.predict({
+    taskId,
+    predictedSuccess,
+    expectedDuration,
+    expectedSteps,
+    riskFactors: (args.riskFactors as string[]) ?? [],
+    confidence: (args.confidence as number) ?? 0.5,
+  });
+
+  return ok({
+    status: 'ok',
+    predictionId: prediction.id,
+    taskId: prediction.taskId,
+    predictedSuccess: prediction.predictedOutcome.success,
+    confidence: prediction.predictedOutcome.confidence,
+    message: 'Prediction recorded. Use apex_foresight_check during execution and apex_foresight_resolve after completion.',
+  });
+}
+
+async function handleForesightCheck(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_foresight_check');
+
+  const predictionId = args.predictionId as string;
+  const stepIndex = args.stepIndex as number;
+  const stepSuccess = args.stepSuccess as boolean;
+  const elapsedMs = args.elapsedMs as number;
+  const completedSteps = args.completedSteps as number;
+  if (!predictionId || stepIndex === undefined || stepSuccess === undefined || !elapsedMs || !completedSteps) {
+    return fail('Missing required parameters: predictionId, stepIndex, stepSuccess, elapsedMs, completedSteps');
+  }
+
+  const engine = await getOrCreateForesightEngine();
+
+  try {
+    const signal = await engine.check({
+      predictionId,
+      stepIndex,
+      stepSuccess,
+      elapsedMs,
+      completedSteps,
+      stepDescription: (args.stepDescription as string) ?? undefined,
+    });
+
+    return ok({
+      status: 'ok',
+      predictionId,
+      stepIndex: signal.stepIndex,
+      divergenceScore: Math.round(signal.divergenceScore * 1000) / 1000,
+      recommendation: signal.recommendation,
+      reason: signal.reason,
+    });
+  } catch (err) {
+    return fail((err as Error).message);
+  }
+}
+
+async function handleForesightResolve(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_foresight_resolve');
+
+  const predictionId = args.predictionId as string;
+  const rawOutcome = args.actualOutcome as {
+    success: boolean;
+    description: string;
+    errorType?: string;
+    duration: number;
+  };
+  if (!predictionId || !rawOutcome) {
+    return fail('Missing required parameters: predictionId, actualOutcome');
+  }
+
+  const engine = await getOrCreateForesightEngine();
+
+  try {
+    const result = await engine.resolve({
+      predictionId,
+      actualOutcome: {
+        success: rawOutcome.success,
+        description: rawOutcome.description,
+        errorType: rawOutcome.errorType,
+        duration: rawOutcome.duration,
+      },
+      episodeId: (args.episodeId as string) ?? undefined,
+    });
+
+    return ok({
+      status: 'ok',
+      predictionId,
+      surpriseScore: Math.round(result.prediction.surpriseScore! * 1000) / 1000,
+      surpriseTriggered: result.surpriseTriggered,
+      breakdown: result.breakdown,
+      adaptationSignalCount: result.prediction.adaptationSignals.length,
+      message: result.surpriseTriggered
+        ? 'High surprise detected — consider running apex_reflect_store with a micro-level reflection.'
+        : 'Outcome was within expected range.',
+    });
+  } catch (err) {
+    return fail((err as Error).message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-agent population handlers
+// ---------------------------------------------------------------------------
+
+async function getOrCreatePopulation(projectPath?: string): Promise<AgentPopulation> {
+  if (agentPopulation) return agentPopulation;
+  const root = projectPath ?? process.cwd();
+  agentPopulation = new AgentPopulation({
+    dataDir: getProjectDataPath(root),
+    logger,
+  });
+  const loaded = await agentPopulation.load();
+  if (!loaded) {
+    await agentPopulation.initialize();
+  }
+  return agentPopulation;
+}
+
+async function handlePopulationStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_population_status');
+
+  const pop = await getOrCreatePopulation();
+  const status = pop.getStatus();
+
+  return ok({
+    status: 'ok',
+    population: {
+      size: status.size,
+      generation: status.generation,
+      competitiveResults: status.competitiveResults,
+      config: status.config,
+      agents: status.agents,
+    },
+  });
+}
+
+async function handlePopulationEvolve(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_population_evolve');
+
+  const pop = await getOrCreatePopulation();
+
+  // If task details are provided, run a competitive evaluation first
+  const taskId = args.taskId as string | undefined;
+  if (taskId) {
+    const taskDomain = args.taskDomain as string;
+    const taskReward = args.taskReward as number;
+    const taskSuccess = args.taskSuccess as boolean;
+    if (!taskDomain || taskReward === undefined || taskSuccess === undefined) {
+      return fail('When taskId is provided, taskDomain, taskReward, and taskSuccess are also required');
+    }
+
+    // Get skill IDs from the skill library
+    const mgr = await getOrCreateManager();
+    const allSkills = await mgr.listSkills();
+    const skillIds = allSkills.map((s) => s.id);
+
+    pop.evaluateCompetitively(taskId, taskDomain, skillIds, taskReward, taskSuccess);
+  }
+
+  // Get available skills for cross-pollination
+  const mgr = await getOrCreateManager();
+  const availableSkills = await mgr.listSkills();
+
+  const result = await pop.evolve(availableSkills);
+
+  return ok({
+    status: 'ok',
+    generation: result.generation,
+    eliteCount: result.eliteIds.length,
+    bredCount: result.bredIds.length,
+    skillTransfers: result.skillTransfers,
+    mutations: result.mutations,
+    fitness: result.fitnessSummary,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool creation handlers
+// ---------------------------------------------------------------------------
+
+async function getOrCreateToolFactory(projectPath?: string): Promise<ToolFactory> {
+  if (toolFactory) return toolFactory;
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+  toolFactory = new ToolFactory({ fileStore: store, logger });
+  return toolFactory;
+}
+
+async function handleToolPropose(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_tool_propose');
+
+  const root = process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  const factory = await getOrCreateToolFactory(root);
+  const episodes = await store.readAll<Episode>('episodes');
+
+  if (episodes.length === 0) {
+    return ok({
+      status: 'ok',
+      proposedCount: 0,
+      tools: [],
+      message: 'No episodes found. Record some episodes first with apex_record.',
+    });
+  }
+
+  // Allow overriding thresholds per-call
+  const minFrequency = (args.minFrequency as number) ?? undefined;
+  const minSuccessRate = (args.minSuccessRate as number) ?? undefined;
+
+  // Create a temporary factory with custom thresholds if provided
+  let factoryToUse = factory;
+  if (minFrequency !== undefined || minSuccessRate !== undefined) {
+    factoryToUse = new ToolFactory({
+      fileStore: store,
+      minFrequency,
+      minSuccessRate,
+      logger,
+    });
+  }
+
+  const proposed = factoryToUse.proposeTools(episodes);
+
+  // Save all proposed tools
+  for (const tool of proposed) {
+    await factory.saveTool(tool);
+  }
+
+  return ok({
+    status: 'ok',
+    proposedCount: proposed.length,
+    episodesAnalysed: episodes.length,
+    tools: proposed.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      parameterCount: t.inputSchema.parameters.length,
+      sourceEpisodeCount: t.sourceEpisodes.length,
+      verificationStatus: t.verificationStatus,
+    })),
+    message: proposed.length > 0
+      ? `Proposed ${proposed.length} tools. Use apex_tool_verify to verify them.`
+      : 'No recurring patterns found meeting the frequency/success-rate thresholds.',
+  });
+}
+
+async function handleToolVerify(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_tool_verify');
+
+  const toolId = args.toolId as string;
+  if (!toolId) return fail('Missing required parameter: toolId');
+
+  const factory = await getOrCreateToolFactory();
+  const tool = await factory.loadTool(toolId);
+
+  if (!tool) {
+    return fail(`Tool not found: ${toolId}`);
+  }
+
+  const verified = factory.verify(tool);
+  await factory.saveTool(verified);
+
+  return ok({
+    status: 'ok',
+    toolId: verified.id,
+    name: verified.name,
+    verificationStatus: verified.verificationStatus,
+    verificationScore: Math.round(verified.verificationScore * 1000) / 1000,
+    message: `Tool ${verified.name} is now ${verified.verificationStatus} (score: ${Math.round(verified.verificationScore * 100)}%).`,
+  });
+}
+
+async function handleToolList(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_tool_list');
+
+  const factory = await getOrCreateToolFactory();
+  const status = args.status as ToolDefinitionApex['verificationStatus'] | undefined;
+  const tools = await factory.listTools(status);
+  const compositions = await factory.listCompositions();
+
+  return ok({
+    status: 'ok',
+    toolCount: tools.length,
+    compositionCount: compositions.length,
+    tools: tools.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      verificationStatus: t.verificationStatus,
+      verificationScore: Math.round(t.verificationScore * 1000) / 1000,
+      masteryMetrics: {
+        usageCount: t.masteryMetrics.usageCount,
+        successRate: Math.round(t.masteryMetrics.successRate * 1000) / 1000,
+        avgDuration: Math.round(t.masteryMetrics.avgDuration),
+        failureContextCount: t.masteryMetrics.failureContexts.length,
+      },
+      tags: t.tags,
+    })),
+    compositions: compositions.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      stepCount: c.steps.length,
+      successRate: Math.round(c.successRate * 1000) / 1000,
+      usageCount: c.usageCount,
+    })),
+  });
+}
+
+async function handleToolCompose(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_tool_compose');
+
+  const root = process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  const factory = await getOrCreateToolFactory(root);
+  const episodes = await store.readAll<Episode>('episodes');
+  const tools = await factory.listTools('verified');
+
+  if (tools.length < 2) {
+    return ok({
+      status: 'ok',
+      compositionCount: 0,
+      compositions: [],
+      message: 'Need at least 2 verified tools to detect compositions. Verify more tools first.',
+    });
+  }
+
+  // If specific tool IDs provided, filter to those
+  const requestedIds = args.toolIds as string[] | undefined;
+  const toolsToCompose = requestedIds
+    ? tools.filter((t) => requestedIds.includes(t.id))
+    : tools;
+
+  const compositions = factory.composeTools(toolsToCompose, episodes);
+
+  for (const comp of compositions) {
+    await factory.saveComposition(comp);
+  }
+
+  return ok({
+    status: 'ok',
+    compositionCount: compositions.length,
+    compositions: compositions.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      stepCount: c.steps.length,
+      successRate: Math.round(c.successRate * 1000) / 1000,
+      usageCount: c.usageCount,
+    })),
+    message: compositions.length > 0
+      ? `Created ${compositions.length} composite tools from detected pipelines.`
+      : 'No recurring tool chains detected in recent episodes.',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Architecture search handlers
+// ---------------------------------------------------------------------------
+
+async function getOrCreateArchitectureSearch(projectPath?: string): Promise<ArchitectureSearch> {
+  if (architectureSearch) return architectureSearch;
+  const root = projectPath ?? process.cwd();
+  architectureSearch = new ArchitectureSearch({
+    dataDir: getProjectDataPath(root),
+    logger,
+  });
+  const loaded = await architectureSearch.load();
+  if (!loaded) {
+    await architectureSearch.initialize();
+  }
+  return architectureSearch;
+}
+
+async function handleArchStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_arch_status');
+
+  const search = await getOrCreateArchitectureSearch();
+  const status = search.getStatus();
+  const currentConfig = search.getCurrentConfig();
+  const bestConfig = search.getBestConfig();
+  const ranked = search.getRankedConfigs();
+
+  return ok({
+    status: 'ok',
+    currentConfig: {
+      id: currentConfig.id,
+      generation: currentConfig.generation,
+      subsystemFlags: currentConfig.subsystemFlags,
+      reflectionFrequency: currentConfig.reflectionFrequency,
+      consolidationFrequency: currentConfig.consolidationFrequency,
+      performanceWindow: currentConfig.performanceWindow,
+      explorationRate: currentConfig.agentConfig.explorationRate,
+      memoryLimits: currentConfig.agentConfig.memoryLimits,
+      consolidationThreshold: currentConfig.agentConfig.consolidationThreshold,
+    },
+    bestConfig: bestConfig ? {
+      id: bestConfig.config.id,
+      score: Math.round(bestConfig.score * 1000) / 1000,
+      generation: bestConfig.config.generation,
+    } : null,
+    search: {
+      generation: status.generation,
+      searchesRemaining: status.searchesRemaining,
+      totalConfigs: status.totalConfigs,
+      totalPerformanceRecords: status.totalPerformanceRecords,
+    },
+    rankedConfigs: ranked.slice(0, 5).map((r) => ({
+      configId: r.configId,
+      score: Math.round(r.score * 1000) / 1000,
+      generation: r.generation,
+    })),
+  });
+}
+
+async function handleArchMutate(args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_arch_mutate');
+
+  const search = await getOrCreateArchitectureSearch();
+  const biased = (args.biased as boolean) ?? false;
+  const mutationType = args.mutationType as string | undefined;
+
+  const result = biased
+    ? search.sampleBiased()
+    : search.mutate(mutationType as Parameters<typeof search.mutate>[0]);
+
+  if (!result.applied) {
+    return ok({
+      status: 'ok',
+      applied: false,
+      reason: result.reason,
+    });
+  }
+
+  await search.save();
+
+  return ok({
+    status: 'ok',
+    applied: true,
+    newConfigId: result.config.id,
+    generation: result.config.generation,
+    mutation: {
+      type: result.mutation.type,
+      description: result.mutation.description,
+      parameter: result.mutation.parameter,
+      previousValue: result.mutation.previousValue,
+      newValue: result.mutation.newValue,
+    },
+    message: `Config mutated: ${result.mutation.description}. Use apex_arch_status to see the full new config.`,
+  });
+}
+
+async function handleArchSuggest(_args: Record<string, unknown>): Promise<CallToolResult> {
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_arch_suggest');
+
+  const search = await getOrCreateArchitectureSearch();
+
+  // Check rollback
+  const rollback = search.checkRollback();
+
+  // Generate prompt suggestions from effectiveness tracker data
+  let promptSuggestions: unknown[] = [];
+  try {
+    const report = await tracker.getReport();
+    const toolUsage = {
+      callCounts: report.currentSession.toolCalls,
+      successRates: {} as Record<string, number>,
+      totalEpisodes: report.currentSession.totalCalls,
+    };
+
+    // Compute success rates from recall hit rate as a proxy
+    if (report.currentSession.recallHitRate !== undefined && report.currentSession.recallHitRate !== null) {
+      toolUsage.successRates['apex_recall'] = report.currentSession.recallHitRate;
+    }
+
+    promptSuggestions = search.generatePromptSuggestions(toolUsage);
+  } catch {
+    // Effectiveness tracker not ready — skip prompt suggestions
+  }
+
+  return ok({
+    status: 'ok',
+    rollback: {
+      shouldRollback: rollback.shouldRollback,
+      targetConfigId: rollback.targetConfigId,
+      currentScore: Math.round(rollback.currentScore * 1000) / 1000,
+      targetScore: rollback.targetScore !== undefined ? Math.round(rollback.targetScore * 1000) / 1000 : undefined,
+      reason: rollback.reason,
+    },
+    promptSuggestions,
+    message: rollback.shouldRollback
+      ? `Performance degradation detected. Consider rolling back to config ${rollback.targetConfigId}.`
+      : 'Architecture performing within acceptable range.',
+  });
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -794,4 +1349,16 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_rollback', handleRollback],
   ['apex_promote', handlePromote],
   ['apex_import', handleImport],
+  ['apex_foresight_predict', handleForesightPredict],
+  ['apex_foresight_check', handleForesightCheck],
+  ['apex_foresight_resolve', handleForesightResolve],
+  ['apex_population_status', handlePopulationStatus],
+  ['apex_population_evolve', handlePopulationEvolve],
+  ['apex_tool_propose', handleToolPropose],
+  ['apex_tool_verify', handleToolVerify],
+  ['apex_tool_list', handleToolList],
+  ['apex_tool_compose', handleToolCompose],
+  ['apex_arch_status', handleArchStatus],
+  ['apex_arch_mutate', handleArchMutate],
+  ['apex_arch_suggest', handleArchSuggest],
 ]);

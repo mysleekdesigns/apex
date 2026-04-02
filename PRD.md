@@ -1,9 +1,9 @@
 # APEX: Adaptive Personal Experience eXtraction
 ## Product Requirements Document
 
-**Version:** 0.9.0
+**Version:** 0.10.0
 **Date:** 2026-04-02
-**Status:** Phase 9 Complete — Testing & Hardening
+**Status:** Phase 10 Complete — Advanced Features
 
 ---
 
@@ -51,7 +51,7 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 | **7** | Cross-Project Learning | ✅ **Complete** | Global store, skill promotion, cross-project query, portability, project similarity index |
 | **8** | Hooks, CLAUDE.md & E2E Integration | ✅ **Complete** | CLAUDE.md contextual instructions, .mcp.json config, hooks guide, effectiveness tracker, E2E smoke tests |
 | **9** | Testing & Hardening | ✅ **Complete** | 204 tests passing: unit tests, integration tests, benchmarks, memory validation |
-| **10** | Advanced Features (Post-MVP) | 📋 Not started | Foresight reflection, multi-agent, tool creation |
+| **10** | Advanced Features (Post-MVP) | ✅ **Complete** | Foresight reflection, multi-agent co-evolution, tool creation & mastery, adaptive architecture search |
 | **11** | Team Learning & GitHub Sharing | 📋 Not started | `.apex-shared/`, PR-based skill proposals, team memory tier |
 
 ---
@@ -762,31 +762,47 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ---
 
-## Phase 10: Advanced Features (Post-MVP)
+## Phase 10: Advanced Features (Post-MVP) ✅ COMPLETE
 
 **Goal:** Stretch features that push the system toward production-grade autonomous learning.
 
+**Completed:** 2026-04-02
+**New code:** ~3,150 lines (4 modules) + ~2,480 lines tests (4 test files)
+**New tests:** 120 tests across 4 files, all passing
+**New MCP tools:** 12 (3 foresight + 2 population + 4 tool-creation + 3 architecture)
+**Total tests:** 369 across 30 files
+
 ### Checklist
 
-- [ ] **Foresight-based reflection** (SaMuLe interactive mode)
-  - [ ] Predict expected outcome before execution
-  - [ ] Compare predicted vs actual, trigger reflection on surprise
-  - [ ] Proactive adaptation during multi-step tasks
+- [x] **Foresight-based reflection** (`src/reflection/foresight.ts`) ✅ — SaMuLe interactive mode
+  - [x] Predict expected outcome before execution (`ForesightEngine.predict()`)
+  - [x] Compare predicted vs actual, trigger reflection on surprise (`ForesightEngine.resolve()` with weighted surprise score)
+  - [x] Proactive adaptation during multi-step tasks (`ForesightEngine.check()` with divergence signals)
+  - [x] MCP tools: `apex_foresight_predict`, `apex_foresight_check`, `apex_foresight_resolve`
+  - [x] 26 tests (`src/reflection/foresight.test.ts`)
 
-- [ ] **Multi-agent co-evolution**
-  - [ ] Population of agent instances with shared Semantic Memory
-  - [ ] Cross-pollination: best skills migrate between agents
-  - [ ] Competitive evaluation: agents solve same tasks, best strategies win
+- [x] **Multi-agent co-evolution** (`src/evolution/multi-agent.ts`) ✅
+  - [x] Population of agent instances with shared Semantic Memory (`AgentPopulation` class)
+  - [x] Cross-pollination: best skills migrate between agents (confidence boosting for broadly-adopted skills)
+  - [x] Competitive evaluation: agents solve same tasks, best strategies win (tournament selection + fitness ranking)
+  - [x] MCP tools: `apex_population_status`, `apex_population_evolve`
+  - [x] 26 tests (`src/evolution/multi-agent.test.ts`)
 
-- [ ] **Tool creation & mastery** (Voyager-inspired)
-  - [ ] Automatic tool/function creation from successful patterns
-  - [ ] Tool verification sandbox
-  - [ ] Tool composition into higher-order capabilities
+- [x] **Tool creation & mastery** (`src/evolution/tool-creation.ts`) ✅ — Voyager-inspired
+  - [x] Automatic tool/function creation from successful patterns (`ToolFactory.proposeTools()` with n-gram pattern extraction)
+  - [x] Tool verification sandbox (5-dimension scoring: preconditions, generalizability, clarity, reusability, safety)
+  - [x] Tool composition into higher-order capabilities (`ToolFactory.composeTools()` for pipeline detection)
+  - [x] Tool mastery tracking with auto-deprecation
+  - [x] MCP tools: `apex_tool_propose`, `apex_tool_verify`, `apex_tool_list`, `apex_tool_compose`
+  - [x] 28 tests (`src/evolution/tool-creation.test.ts`)
 
-- [ ] **Adaptive architecture search**
-  - [ ] Meta-learning: optimize hyperparameters (exploration constant, memory capacities)
-  - [ ] Architecture mutation: try different reflection/planning combinations
-  - [ ] Self-referential improvement: agent modifies its own prompts/config
+- [x] **Adaptive architecture search** (`src/evolution/architecture-search.ts`) ✅
+  - [x] Meta-learning: optimize hyperparameters with Bayesian-inspired biased sampling
+  - [x] Architecture mutation: 7 mutation types (toggle subsystems, adjust frequencies, capacities, rates)
+  - [x] Self-referential improvement: prompt suggestion generation based on tool usage analytics
+  - [x] Config history with auto-rollback detection on performance degradation
+  - [x] MCP tools: `apex_arch_status`, `apex_arch_mutate`, `apex_arch_suggest`
+  - [x] 40 tests (`src/evolution/architecture-search.test.ts`)
 
 ---
 
