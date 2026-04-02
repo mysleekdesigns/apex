@@ -1,0 +1,24 @@
+{
+  "name": "apex-learning",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "APEX - MCP server for agent self-learning",
+  "bin": {
+    "apex": "dist/mcp/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/mcp/server.ts",
+    "test": "vitest",
+    "start": "node dist/mcp/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
