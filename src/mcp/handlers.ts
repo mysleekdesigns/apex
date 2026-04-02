@@ -1,9 +1,9 @@
 /**
  * APEX MCP Tool Handlers
  *
- * Connects MCP tool calls to the memory and reflection subsystems.
- * Handlers that depend on subsystems not yet built (planning,
- * curriculum, evolution) remain stubbed.
+ * Connects MCP tool calls to the memory, reflection, and planning subsystems.
+ * Handlers that depend on subsystems not yet built (curriculum,
+ * evolution) remain stubbed.
  */
 
 import path from 'node:path';
@@ -16,6 +16,10 @@ import { ReflectionCoordinator } from '../reflection/coordinator.js';
 import { FileStore } from '../utils/file-store.js';
 import { Logger } from '../utils/logger.js';
 import { scanProject } from '../utils/project-scanner.js';
+import { PlanContextBuilder } from '../planning/context.js';
+import { ActionTree } from '../planning/action-tree.js';
+import { PlanTracker } from '../planning/tracker.js';
+import { ValueEstimator } from '../planning/value.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +53,10 @@ function fail(message: string): CallToolResult {
 
 let memoryManager: MemoryManager | null = null;
 let reflectionCoordinator: ReflectionCoordinator | null = null;
+let planContextBuilder: PlanContextBuilder | null = null;
+let actionTree: ActionTree | null = null;
+let planTracker: PlanTracker | null = null;
+let valueEstimator: ValueEstimator | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -71,6 +79,39 @@ async function getOrCreateManager(projectPath?: string): Promise<MemoryManager> 
   });
   await memoryManager.init();
   return memoryManager;
+}
+
+async function getOrCreatePlanningSubsystems(projectPath?: string): Promise<{
+  contextBuilder: PlanContextBuilder;
+  tree: ActionTree;
+  tracker: PlanTracker;
+  estimator: ValueEstimator;
+}> {
+  const root = projectPath ?? process.cwd();
+  const mgr = await getOrCreateManager(root);
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!actionTree) {
+    actionTree = new ActionTree({ fileStore: store, logger });
+    await actionTree.load();
+  }
+  if (!planTracker) {
+    planTracker = new PlanTracker({ fileStore: store, logger });
+  }
+  if (!valueEstimator) {
+    valueEstimator = new ValueEstimator({ logger });
+  }
+  if (!planContextBuilder) {
+    planContextBuilder = new PlanContextBuilder({ fileStore: store, memoryManager: mgr, logger });
+  }
+
+  return {
+    contextBuilder: planContextBuilder,
+    tree: actionTree,
+    tracker: planTracker,
+    estimator: valueEstimator,
+  };
 }
 
 async function getOrCreateReflectionCoordinator(projectPath?: string): Promise<ReflectionCoordinator> {
@@ -247,43 +288,46 @@ async function handlePlanContext(args: Record<string, unknown>): Promise<CallToo
   const task = args.task as string;
   if (!task) return fail('Missing required parameter: task');
 
-  const mgr = await getOrCreateManager();
+  const { contextBuilder, tree, estimator } = await getOrCreatePlanningSubsystems();
+  const context = await contextBuilder.getContext(task);
 
-  // Gather context from memory
-  const [memories, skillResults] = await Promise.all([
-    mgr.recall(task, 10),
-    mgr.searchSkills(task, 5),
-  ]);
-
-  // Separate past attempts from general knowledge
-  const pastAttempts = memories.filter((r) => r.sourceTier === 'episodic');
-  const knowledge = memories.filter((r) => r.sourceTier === 'semantic');
-  const skills = skillResults.map((r) => ({
-    name: r.skill.name,
-    description: r.skill.description,
-    successRate: r.skill.successRate,
-    confidence: r.skill.confidence,
-  }));
-
-  // Identify pitfalls (failed past attempts)
-  const pitfalls = pastAttempts
-    .filter((r) => r.entry.content.includes('FAILURE'))
-    .map((r) => r.entry.content);
+  // Augment with action tree best path if available
+  let bestActionPath: string[] | null = null;
+  const root = tree.getRoot();
+  if (root) {
+    const path = tree.getBestPath(root.id);
+    if (path.length > 0) {
+      bestActionPath = path.map((n) => n.action);
+    }
+  }
 
   return ok({
     status: 'ok',
     task,
-    pastAttempts: pastAttempts.map((r) => ({
-      content: r.entry.content,
-      score: r.score,
+    confidence: Math.round(context.confidence * 1000) / 1000,
+    suggestedApproach: context.suggestedApproach,
+    pastAttempts: context.pastAttempts.map((a) => ({
+      episodeId: a.episodeId,
+      task: a.task,
+      success: a.outcome.success,
+      reward: a.reward,
+      similarity: Math.round(a.similarity * 1000) / 1000,
+      actionCount: a.actions.length,
     })),
-    knownPitfalls: pitfalls,
-    relevantKnowledge: knowledge.map((r) => ({
-      content: r.entry.content,
-      confidence: r.entry.confidence,
+    knownPitfalls: context.knownPitfalls.map((p) => ({
+      description: p.description,
+      errorType: p.errorType,
+      frequency: p.frequency,
     })),
-    applicableSkills: skills,
-    message: 'Phase 4 will add MCTS-based action tree and UCB1 scoring.',
+    applicableSkills: context.applicableSkills.map((s) => ({
+      name: s.name,
+      description: s.description,
+      successRate: s.successRate,
+      confidence: s.confidence,
+      relevance: Math.round(s.relevance * 1000) / 1000,
+    })),
+    relevantInsights: context.relevantInsights,
+    bestActionPath,
   });
 }
 

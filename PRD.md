@@ -1,9 +1,9 @@
 # APEX: Adaptive Personal Experience eXtraction
 ## Product Requirements Document
 
-**Version:** 0.6.0
+**Version:** 0.7.0
 **Date:** 2026-04-02
-**Status:** Phase 2 Complete — Hierarchical Memory System
+**Status:** Phase 4 Complete — MCTS Planning Engine
 
 ---
 
@@ -44,8 +44,8 @@ When reflection or planning is needed, APEX returns raw data to Claude Code, Cla
 |-------|------|--------|-------|
 | **1** | Foundation & MCP Server Scaffold | ✅ **Complete** | MCP server, 15 tool defs, types, utilities, project scanner. Handlers stubbed. |
 | **2** | Hierarchical Memory System | ✅ **Complete** | 4-tier memory, staleness detection, snapshots, embedding store, memory manager. 12/15 handlers live. |
-| **3** | Multi-Level Reflection Engine | 📋 Not started | Micro/meso/macro data assemblers, reflection storage |
-| **4** | MCTS Planning Engine | 📋 Not started | Experience-backed plan context, action history tree |
+| **3** | Multi-Level Reflection Engine | ✅ **Complete** | Micro/meso/macro data assemblers, reflection storage |
+| **4** | MCTS Planning Engine | ✅ **Complete** | Experience-backed plan context, action history tree, plan tracker, value estimation |
 | **5** | Curriculum & Experience Replay | 📋 Not started | Difficulty estimation, curriculum generation, skill extraction |
 | **6** | Evolution Engine | 📋 Not started | Self-evaluation, knowledge distillation, metrics |
 | **7** | Cross-Project Learning | 📋 Not started | Global store, skill promotion, import/export |
@@ -532,30 +532,30 @@ Bad reflections or skills can poison future sessions. Safety net:
 
 ### Checklist
 
-- [ ] **Experience-backed plan context** (`src/planning/context.ts`)
-  - [ ] Given a task, retrieve: past attempts at similar tasks, their outcomes, and reflections
-  - [ ] Rank past approaches by success rate and recency
-  - [ ] Identify known pitfalls and anti-patterns for this task type
-  - [ ] Suggest applicable skills from Procedural Memory
-  - [ ] Return structured context for Claude to reason over
+- [x] **Experience-backed plan context** (`src/planning/context.ts`) ✅
+  - [x] Given a task, retrieve: past attempts at similar tasks, their outcomes, and reflections
+  - [x] Rank past approaches by success rate and recency
+  - [x] Identify known pitfalls and anti-patterns for this task type
+  - [x] Suggest applicable skills from Procedural Memory
+  - [x] Return structured context for Claude to reason over
 
-- [ ] **Action history tree** (`src/planning/action-tree.ts`)
-  - [ ] Tree structure tracking historical action sequences and their outcomes
-  - [ ] Node: state description + action taken + outcome value
-  - [ ] Visit count and average value per action path (UCB1-informed ranking)
-  - [ ] Prune low-value branches automatically
+- [x] **Action history tree** (`src/planning/action-tree.ts`) ✅
+  - [x] Tree structure tracking historical action sequences and their outcomes
+  - [x] Node: state description + action taken + outcome value
+  - [x] Visit count and average value per action path (UCB1-informed ranking)
+  - [x] Prune low-value branches automatically
 
-- [ ] **Plan tracking** (`src/planning/tracker.ts`)
-  - [ ] Record plans proposed by Claude (via `apex_record` with plan metadata)
-  - [ ] Track plan execution: which steps completed, which failed
-  - [ ] Link plan outcomes back to the action history tree
-  - [ ] Compute plan success rates by task type
+- [x] **Plan tracking** (`src/planning/tracker.ts`) ✅
+  - [x] Record plans proposed by Claude (via `apex_record` with plan metadata)
+  - [x] Track plan execution: which steps completed, which failed
+  - [x] Link plan outcomes back to the action history tree
+  - [x] Compute plan success rates by task type
 
-- [ ] **Value estimation** (`src/planning/value.ts`)
-  - [ ] Historical success rate for action patterns (from action tree)
-  - [ ] Skill-informed priors: boost value for actions matching learned skills
-  - [ ] UCB1 scoring: `Q(s,a) + c * sqrt(ln(N(s)) / N(s,a))` for exploration/exploitation
-  - [ ] Decay old values over time (recency weighting)
+- [x] **Value estimation** (`src/planning/value.ts`) ✅
+  - [x] Historical success rate for action patterns (from action tree)
+  - [x] Skill-informed priors: boost value for actions matching learned skills
+  - [x] UCB1 scoring: `Q(s,a) + c * sqrt(ln(N(s)) / N(s,a))` for exploration/exploitation
+  - [x] Decay old values over time (recency weighting)
 
 ---
 
