@@ -527,6 +527,19 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
       // Effectiveness tracker not ready — fine
     }
 
+    // Phase 22: Include memory bounds / usage report
+    let memoryUsage: Record<string, unknown> = {};
+    try {
+      const usageReport = await mgr.getMemoryUsage();
+      memoryUsage = {
+        tiers: usageReport.tiers,
+        totalFileSizeMB: usageReport.totalFileSizeMB,
+        alerts: usageReport.alerts,
+      };
+    } catch {
+      // Memory usage report failed — non-critical
+    }
+
     return ok({
       status: 'ok',
       tool: 'apex_status',
@@ -536,6 +549,7 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
         semantic: stats.semantic,
         procedural: stats.procedural,
       },
+      memoryUsage,
       snapshots: stats.snapshots,
       staleness: stalenessStats,
       global: globalStats,

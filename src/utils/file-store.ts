@@ -11,6 +11,11 @@ export class FileStore {
     this.basePath = basePath;
   }
 
+  /** Return the root directory path for this store. */
+  getBasePath(): string {
+    return this.basePath;
+  }
+
   /** Create the .apex-data/ directory structure. */
   async init(): Promise<void> {
     for (const collection of COLLECTIONS) {

@@ -21,6 +21,7 @@ import { ProceduralMemory, type StoredSkill } from './procedural.js';
 import { StalenessDetector } from './staleness.js';
 import { SnapshotManager } from './snapshots.js';
 import { EmbeddingStore } from './embedding-store.js';
+import { MemoryBounds, type MemoryBoundsConfig, type MemoryUsageReport } from './bounds.js';
 import { FileStore } from '../utils/file-store.js';
 import { EventBus } from '../utils/event-bus.js';
 import { Logger } from '../utils/logger.js';
@@ -41,6 +42,8 @@ export interface MemoryManagerOptions {
   projectPath: string;
   /** Memory limits per tier. */
   limits?: AgentConfig['memoryLimits'];
+  /** Memory bounds configuration (soft/hard limits). */
+  boundsConfig?: Partial<MemoryBoundsConfig>;
   /** Consolidation threshold (working memory entries before auto-consolidate). */
   consolidationThreshold?: number;
   /** Logger instance. */
@@ -66,6 +69,7 @@ export class MemoryManager {
   private readonly procedural: ProceduralMemory;
   private readonly staleness: StalenessDetector;
   private readonly snapshots: SnapshotManager;
+  private readonly bounds: MemoryBounds;
   private readonly embeddingStore: EmbeddingStore;
   private readonly eventBus: EventBus;
   private readonly logger: Logger;
@@ -135,6 +139,13 @@ export class MemoryManager {
       logger: new Logger({ prefix: 'apex:embeddings', level: logger['level'] }),
     });
 
+    this.bounds = new MemoryBounds({
+      config: opts.boundsConfig,
+      dataPath: opts.projectDataPath,
+      eventBus,
+      logger: new Logger({ prefix: 'apex:bounds', level: logger['level'] }),
+    });
+
     this.bm25Index = new BM25Index();
 
     // Wire overflow: working -> episodic
@@ -190,6 +201,7 @@ export class MemoryManager {
 
   /** Record an episode directly into episodic memory. */
   async addToEpisodic(entry: MemoryEntry | string): Promise<MemoryEntry> {
+    await this.enforceBeforeAdd('episodic', this.episodic.stats().entryCount);
     const result = await this.episodic.add(entry);
     this.queueEmbedding(result.id, result.content);
     return result;
@@ -200,6 +212,7 @@ export class MemoryManager {
     content: string,
     opts?: { sourceFiles?: string[]; confidence?: number },
   ): Promise<string> {
+    await this.enforceBeforeAdd('semantic', this.semantic.stats().entryCount);
     const id = await this.semantic.add(content, opts);
     this.queueEmbedding(id, content);
     return id;
@@ -209,6 +222,8 @@ export class MemoryManager {
   async addSkill(
     data: Partial<StoredSkill> & Pick<StoredSkill, 'name' | 'description' | 'pattern'>,
   ): Promise<StoredSkill> {
+    const stats = await this.procedural.stats();
+    await this.enforceBeforeAdd('procedural', stats.total);
     return this.procedural.addSkill(data);
   }
 
@@ -445,6 +460,25 @@ export class MemoryManager {
     return this.staleness.getStats();
   }
 
+  // ── Memory Usage Monitoring ──────────────────────────────────────
+
+  /**
+   * Get a comprehensive memory usage report including entry counts,
+   * file sizes, utilization percentages, and actionable alerts.
+   */
+  async getMemoryUsage(): Promise<MemoryUsageReport> {
+    await this.ensureLoaded();
+    return this.bounds.getUsage({
+      working: this.working,
+      episodic: this.episodic,
+      semantic: this.semantic,
+      procedural: this.procedural,
+    });
+  }
+
+  /** Get the bounds manager for external inspection. */
+  getMemoryBounds(): MemoryBounds { return this.bounds; }
+
   // ── Accessors for subsystems (used by MCP handlers) ──────────────
 
   getWorkingMemory(): WorkingMemory { return this.working; }
@@ -456,6 +490,33 @@ export class MemoryManager {
   getEmbeddingStore(): EmbeddingStore { return this.embeddingStore; }
 
   // ── Private helpers ──────────────────────────────────────────────
+
+  /**
+   * Check bounds before adding to a tier. If the hard limit is reached,
+   * run enforcement to free space. Logs a warning if soft limit exceeded.
+   * Throws if enforcement cannot free enough space.
+   */
+  private async enforceBeforeAdd(tier: string, currentCount: number): Promise<void> {
+    const check = this.bounds.canAdd(tier, currentCount);
+    if (check.allowed) return;
+
+    // Hard limit reached — try to enforce
+    const report = await this.bounds.enforce(tier, {
+      working: this.working,
+      episodic: this.episodic,
+      semantic: this.semantic,
+      procedural: this.procedural,
+    });
+
+    // Re-check after enforcement
+    const newCount = currentCount - report.evictedCount;
+    const recheck = this.bounds.canAdd(tier, newCount);
+    if (!recheck.allowed) {
+      throw new Error(
+        `Cannot add to ${tier} memory: at capacity (${newCount} entries) and eviction could not free enough space. All remaining entries are high-value. Run apex_consolidate to promote entries.`,
+      );
+    }
+  }
 
   private async ensureLoaded(): Promise<void> {
     if (!this.loaded) {
