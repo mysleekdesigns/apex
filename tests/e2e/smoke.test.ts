@@ -152,7 +152,7 @@ describe('Smoke: record-reflect-recall round-trip', () => {
     // Use the default level (no level arg) which returns metrics + unreflected count.
     // Meso level can hit an embedding bug on episodes missing optional fields,
     // so we test the safe path here and verify the coordinator responds.
-    const { parsed, isError } = await callTool(handlers, 'apex_reflect_get', {});
+    const { parsed, isError } = await callTool(handlers, 'apex_reflect_get', { scope: 'recent' });
     expect(isError).toBe(false);
     expect(parsed.status).toBe('ok');
     expect(parsed).toHaveProperty('unreflectedEpisodeCount');

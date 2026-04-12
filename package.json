@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
-    "@modelcontextprotocol/sdk": "latest"
+    "@modelcontextprotocol/sdk": "latest",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
