@@ -11,7 +11,7 @@
 
 import type { MemoryEntry, SearchResult } from '../types.js';
 import { generateId } from '../types.js';
-import { getEmbedding, type EmbeddingResult } from '../utils/embeddings.js';
+import { getEmbedding, getEmbeddingAsync, type EmbeddingResult } from '../utils/embeddings.js';
 import { combinedSimilarity } from '../utils/similarity.js';
 import { contentHash } from '../utils/hashing.js';
 import { FileStore } from '../utils/file-store.js';
@@ -139,6 +139,9 @@ export class SemanticMemory {
     }
 
     this.logger.info(`Loaded ${loaded} semantic entries from storage`);
+
+    // Try to enhance embeddings with L2 dense vectors in background
+    void this.enhanceEmbeddings().catch(() => {});
   }
 
   /**
@@ -159,6 +162,29 @@ export class SemanticMemory {
   private async unpersist(id: string): Promise<void> {
     if (!this.fileStore) return;
     await this.fileStore.delete(COLLECTION, id);
+  }
+
+  // -----------------------------------------------------------------------
+  // L2 Embedding Enhancement
+  // -----------------------------------------------------------------------
+
+  /**
+   * Background-enhance cached embeddings with L2 dense vectors.
+   * If L2 fails on the first entry, stops early to avoid repeated failures.
+   */
+  private async enhanceEmbeddings(): Promise<void> {
+    for (const [id, entry] of this.entries) {
+      try {
+        const enhanced = await getEmbeddingAsync(entry.content, 'auto');
+        this.embeddings.set(id, enhanced);
+        if (enhanced.embedding) {
+          entry.embedding = enhanced.embedding;
+        }
+      } catch {
+        // If L2 fails once, don't retry for every entry
+        break;
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -204,7 +230,12 @@ export class SemanticMemory {
     }
 
     // ── Near-duplicate detection ─────────────────────────────────────
-    const queryEmbed = getEmbedding(content);
+    let queryEmbed: EmbeddingResult;
+    try {
+      queryEmbed = await getEmbeddingAsync(content, 'auto');
+    } catch {
+      queryEmbed = getEmbedding(content);
+    }
     const nearDup = this.findNearDuplicate(queryEmbed);
 
     if (nearDup) {
@@ -329,7 +360,12 @@ export class SemanticMemory {
    * @returns Ranked array of {@link SearchResult}.
    */
   async search(query: string, topK = 10): Promise<SearchResult[]> {
-    const queryEmbed = getEmbedding(query);
+    let queryEmbed: EmbeddingResult;
+    try {
+      queryEmbed = await getEmbeddingAsync(query, 'auto');
+    } catch {
+      queryEmbed = getEmbedding(query);
+    }
 
     const scored: { entry: MemoryEntry; score: number }[] = [];
 

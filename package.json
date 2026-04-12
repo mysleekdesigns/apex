@@ -13,6 +13,7 @@
     "start": "node dist/mcp/server.js"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
     "@modelcontextprotocol/sdk": "latest"
   },
   "devDependencies": {

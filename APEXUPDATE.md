@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~29,500 LOC TypeScript | 369 tests | 27 MCP tools | 4-tier memory | 3-level reflection
+**Current State:** ~30,300 LOC TypeScript | 458 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval
 **Target State:** ~36,400 LOC | ~764 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -13,46 +13,48 @@
 
 ---
 
-### Phase 11: Semantic Vector Memory (~800 LOC, ~40 tests) [HIGH IMPACT]
+### Phase 11: Semantic Vector Memory (~800 LOC, ~40 tests) [HIGH IMPACT] ✅ COMPLETED
 
 **Problem:** APEX uses TF-IDF + SimHash for similarity. "fix authentication bug" won't match "resolve login error." Letta benchmark (Aug 2025) showed hybrid retrieval scores 74% on LoCoMo, beating pure approaches.
 
 **Research:** MemGPT (arxiv:2310.08560) | Letta benchmarks (Aug 2025) | ACT-R memory (ACM 2026)
 
+**Completed:** 2026-04-12 | 458 tests passing | TypeScript clean
+
 #### Core Infrastructure
-- [ ] Implement HNSW (Hierarchical Navigable Small World) index in `src/utils/vector-index.ts`
-- [ ] Support configurable distance metrics (cosine, euclidean, dot product)
-- [ ] Implement incremental insert and delete operations
-- [ ] Add serialization/deserialization for index persistence
-- [ ] Benchmark: sub-linear retrieval at 10K+ entries (<50ms)
+- [x] Implement HNSW (Hierarchical Navigable Small World) index in `src/utils/vector-index.ts`
+- [x] Support configurable distance metrics (cosine, euclidean, dot product)
+- [x] Implement incremental insert and delete operations
+- [x] Add serialization/deserialization for index persistence
+- [x] Benchmark: sub-linear retrieval at 10K+ entries (<50ms)
 
 #### Embedding Upgrade
-- [ ] Make `@xenova/transformers` L2 embedding the default (was opt-in)
-- [ ] Default model: `all-MiniLM-L6-v2` (23MB, ~30ms per embed)
-- [ ] Add embedding cache with LRU eviction to avoid re-computation
-- [ ] Implement lazy model loading (only load on first embed call)
-- [ ] Fallback: graceful degradation to L0+L1 if model fails to load
-- [ ] Update `src/utils/embeddings.ts` with new defaults
+- [x] Make `@huggingface/transformers` L2 embedding the default (was opt-in)
+- [x] Default model: `all-MiniLM-L6-v2` (23MB, ~30ms per embed)
+- [x] Add embedding cache with LRU eviction to avoid re-computation
+- [x] Implement lazy model loading (only load on first embed call)
+- [x] Fallback: graceful degradation to L0+L1 if model fails to load
+- [x] Update `src/utils/embeddings.ts` with new defaults
 
 #### Hybrid Retrieval
-- [ ] Implement BM25 scoring in `src/utils/similarity.ts`
-- [ ] Combine: vector similarity (0.6) + BM25 keyword (0.3) + recency (0.1)
-- [ ] Make weights configurable via architecture search
-- [ ] Add retrieval quality metrics (MRR, recall@k)
+- [x] Implement BM25 scoring in `src/utils/similarity.ts`
+- [x] Combine: vector similarity (0.6) + BM25 keyword (0.3) + recency (0.1)
+- [x] Make weights configurable via architecture search
+- [x] Add retrieval quality metrics (MRR, recall@k)
 
 #### Embed-on-Write Pipeline
-- [ ] Modify `src/memory/manager.ts` to embed entries on write
-- [ ] Store embeddings alongside entries in file store
-- [ ] Background embedding queue for batch writes
-- [ ] Update `src/memory/episodic.ts` for vector-aware segment retrieval
-- [ ] Update `src/memory/semantic.ts` for vector-aware dedup and retrieval
+- [x] Modify `src/memory/manager.ts` to embed entries on write
+- [x] Store embeddings alongside entries in file store
+- [x] Background embedding queue for batch writes
+- [x] Update `src/memory/episodic.ts` for vector-aware segment retrieval
+- [x] Update `src/memory/semantic.ts` for vector-aware dedup and retrieval
 
 #### Tests
-- [ ] Unit tests for HNSW index (insert, search, delete, persistence)
-- [ ] Unit tests for BM25 scoring
-- [ ] Integration tests for hybrid retrieval vs pure keyword vs pure vector
-- [ ] Benchmark tests: retrieval latency at 1K, 5K, 10K entries
-- [ ] Regression tests: existing retrieval behavior preserved as fallback
+- [x] Unit tests for HNSW index (insert, search, delete, persistence)
+- [x] Unit tests for BM25 scoring
+- [x] Integration tests for hybrid retrieval vs pure keyword vs pure vector
+- [x] Benchmark tests: retrieval latency at 1K, 5K, 10K entries
+- [x] Regression tests: existing retrieval behavior preserved as fallback
 
 ---
 
@@ -515,7 +517,7 @@
 
 | Wave | Phase | Description | LOC | Tests | Impact |
 |------|-------|-------------|-----|-------|--------|
-| 1 | 11 | Semantic Vector Memory | ~800 | ~40 | HIGH |
+| 1 | 11 | Semantic Vector Memory | ~800 | 89 | HIGH | ✅ DONE |
 | 1 | 21 | Benchmarking Framework | ~600 | ~20 | HIGH |
 | 1 | 22 | Safety Hardening | ~400 | ~40 | MEDIUM |
 | 2 | 12 | Verbal Reinforcement Learning | ~500 | ~30 | HIGH |

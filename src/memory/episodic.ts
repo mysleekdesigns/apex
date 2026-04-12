@@ -7,7 +7,7 @@
  */
 
 import { generateId, type MemoryEntry, type SearchResult } from '../types.js';
-import { getEmbedding, type EmbeddingResult } from '../utils/embeddings.js';
+import { getEmbedding, getEmbeddingAsync, type EmbeddingResult } from '../utils/embeddings.js';
 import { combinedSimilarity } from '../utils/similarity.js';
 import { type FileStore } from '../utils/file-store.js';
 import { type Logger } from '../utils/logger.js';
@@ -165,6 +165,9 @@ export class EpisodicMemory {
       await this.evict(this.entries.size - this.capacity);
     }
 
+    // Try to enhance with L2 embedding (non-blocking)
+    void this.enhanceWithL2(entry).catch(() => {/* graceful degradation */});
+
     this.logger?.debug('Episodic entry added', { id: entry.id, segments: this.segments.size });
 
     return entry;
@@ -181,7 +184,13 @@ export class EpisodicMemory {
   async search(query: string, topK = 10, topSegments = 3): Promise<SearchResult[]> {
     if (this.entries.size === 0) return [];
 
-    const queryEmbedding = getEmbedding(query);
+    // Try async embedding first (may include L2 dense vector), fall back to sync
+    let queryEmbedding: EmbeddingResult;
+    try {
+      queryEmbedding = await getEmbeddingAsync(query, 'auto');
+    } catch {
+      queryEmbedding = getEmbedding(query);
+    }
 
     // Stage 1: rank segments by similarity to query
     const segmentScores: Array<{ segment: Segment; score: number }> = [];
@@ -478,6 +487,26 @@ export class EpisodicMemory {
     }
     if (texts.length > 0) {
       segment.embedding = getEmbedding(texts.join(' '));
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // L2 Embedding Enhancement
+  // -----------------------------------------------------------------------
+
+  /**
+   * Try to enhance an entry with an L2 dense vector embedding.
+   * Non-blocking, fire-and-forget — failures are silently ignored.
+   */
+  private async enhanceWithL2(entry: MemoryEntry): Promise<void> {
+    try {
+      const result = await getEmbeddingAsync(entry.content, 'auto');
+      if (result.embedding) {
+        entry.embedding = result.embedding;
+        await this.persistEntry(entry);
+      }
+    } catch {
+      // L2 not available, no-op
     }
   }
 

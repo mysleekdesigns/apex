@@ -24,6 +24,9 @@ import { EmbeddingStore } from './embedding-store.js';
 import { FileStore } from '../utils/file-store.js';
 import { EventBus } from '../utils/event-bus.js';
 import { Logger } from '../utils/logger.js';
+import { getEmbedding, getEmbeddingAsync, getSemanticEmbedder, extractKeywords, simHash } from '../utils/embeddings.js';
+import { HNSWIndex } from '../utils/vector-index.js';
+import { BM25Index, hybridSearch, type HybridInput } from '../utils/similarity.js';
 
 // ---------------------------------------------------------------------------
 // Options & stats
@@ -70,6 +73,15 @@ export class MemoryManager {
   private readonly globalStore: FileStore | null;
   private readonly consolidationThreshold: number;
   private loaded = false;
+
+  /** HNSW vector index for dense embedding search (null if L2 unavailable). */
+  private hnswIndex: HNSWIndex | null = null;
+  /** BM25 keyword index for hybrid retrieval. */
+  private bm25Index: BM25Index;
+  /** Queue of entries pending async embedding. */
+  private embeddingQueue: Array<{ id: string; content: string }> = [];
+  /** Guard to prevent concurrent queue flushes. */
+  private flushingQueue = false;
 
   constructor(opts: MemoryManagerOptions) {
     const logger = opts.logger ?? new Logger({ prefix: 'apex:memory' });
@@ -123,6 +135,8 @@ export class MemoryManager {
       logger: new Logger({ prefix: 'apex:embeddings', level: logger['level'] }),
     });
 
+    this.bm25Index = new BM25Index();
+
     // Wire overflow: working -> episodic
     this.eventBus.on('memory:working-overflow', async (entry: unknown) => {
       const memEntry = entry as MemoryEntry;
@@ -147,6 +161,8 @@ export class MemoryManager {
       this.semantic.load(),
       this.procedural.load(),
     ]);
+    // Build BM25 and HNSW indexes from existing entries (non-blocking for L2)
+    await this.buildIndexes();
     this.loaded = true;
     this.logger.info('Memory manager initialized');
   }
@@ -174,7 +190,9 @@ export class MemoryManager {
 
   /** Record an episode directly into episodic memory. */
   async addToEpisodic(entry: MemoryEntry | string): Promise<MemoryEntry> {
-    return this.episodic.add(entry);
+    const result = await this.episodic.add(entry);
+    this.queueEmbedding(result.id, result.content);
+    return result;
   }
 
   /** Add knowledge to semantic memory. Returns the entry ID. */
@@ -182,7 +200,9 @@ export class MemoryManager {
     content: string,
     opts?: { sourceFiles?: string[]; confidence?: number },
   ): Promise<string> {
-    return this.semantic.add(content, opts);
+    const id = await this.semantic.add(content, opts);
+    this.queueEmbedding(id, content);
+    return id;
   }
 
   /** Store or update a skill in procedural memory. */
@@ -235,6 +255,40 @@ export class MemoryManager {
       seen.add(r.entry.id);
       return true;
     });
+
+    // Enhance with hybrid scoring if we have enough results
+    if (merged.length > 0) {
+      try {
+        const queryEmbedding = await getEmbeddingAsync(query, 'auto');
+        const hybridInputs: HybridInput[] = merged.map((r) => ({
+          id: r.entry.id,
+          keywords: extractKeywords(r.entry.content),
+          simhash: simHash(r.entry.content),
+          embedding: this.embeddingStore.get(r.entry.id) ?? undefined,
+          timestamp: r.entry.accessedAt,
+        }));
+
+        const queryInput: HybridInput = {
+          id: 'query',
+          keywords: queryEmbedding.keywords,
+          simhash: queryEmbedding.simhash,
+          embedding: queryEmbedding.embedding,
+        };
+
+        const hybridResults = hybridSearch(queryInput, hybridInputs, undefined, this.bm25Index);
+
+        // Re-rank merged results by hybrid score
+        const scoreMap = new Map(hybridResults.map((r) => [r.id, r.score]));
+        for (const result of merged) {
+          const hybridScore = scoreMap.get(result.entry.id);
+          if (hybridScore !== undefined) {
+            result.score = hybridScore;
+          }
+        }
+      } catch {
+        // Hybrid enhancement failed — continue with original scores
+      }
+    }
 
     // Sort by score descending
     merged.sort((a, b) => b.score - a.score);
@@ -477,5 +531,96 @@ export class MemoryManager {
       semantic: this.semantic.stats().entryCount,
       procedural: proceduralStats.total,
     };
+  }
+
+  // ── Vector & BM25 Index Management ──────────────────────────────
+
+  /**
+   * Build BM25 and HNSW indexes from existing episodic and semantic entries.
+   * Called once during init(). L2/HNSW is best-effort — if unavailable,
+   * hnswIndex stays null and only BM25 is used.
+   */
+  private async buildIndexes(): Promise<void> {
+    const allEntries: Array<{ id: string; content: string }> = [];
+
+    for (const entry of this.episodic.getAll()) {
+      allEntries.push({ id: entry.id, content: entry.content });
+    }
+    for (const entry of this.semantic.all()) {
+      allEntries.push({ id: entry.id, content: entry.content });
+    }
+
+    // Populate BM25 index with keywords from all entries
+    for (const { id, content } of allEntries) {
+      const { keywords } = getEmbedding(content);
+      this.bm25Index.addDocument(id, keywords);
+    }
+
+    // Try to build HNSW index with L2 embeddings (non-blocking, best-effort)
+    try {
+      const embedder = getSemanticEmbedder();
+      for (const { id, content } of allEntries) {
+        const embedding = await embedder.embed(content);
+        if (!this.hnswIndex) {
+          this.hnswIndex = new HNSWIndex(embedding.length);
+        }
+        this.hnswIndex.insert(id, embedding);
+        this.embeddingStore.set(id, embedding);
+      }
+    } catch {
+      // L2 not available — HNSW stays null, graceful degradation
+      this.logger.debug('L2 embeddings unavailable; HNSW index not built');
+    }
+  }
+
+  /**
+   * Queue an entry for async embedding. When the queue reaches 5 items
+   * the batch is flushed automatically.
+   */
+  private queueEmbedding(id: string, content: string): void {
+    this.embeddingQueue.push({ id, content });
+    if (!this.flushingQueue && this.embeddingQueue.length >= 5) {
+      void this.flushEmbeddingQueue();
+    }
+  }
+
+  /**
+   * Flush the embedding queue: compute L2 embeddings and update HNSW / BM25.
+   * Gracefully degrades to BM25-only if L2 is unavailable.
+   */
+  private async flushEmbeddingQueue(): Promise<void> {
+    if (this.flushingQueue || this.embeddingQueue.length === 0) return;
+    this.flushingQueue = true;
+
+    const batch = this.embeddingQueue.splice(0, 20);
+    try {
+      const embedder = getSemanticEmbedder();
+      for (const item of batch) {
+        try {
+          const embedding = await embedder.embed(item.content);
+          // Add to HNSW index
+          if (!this.hnswIndex) {
+            this.hnswIndex = new HNSWIndex(embedding.length);
+          }
+          this.hnswIndex.insert(item.id, embedding);
+          // Also store in embedding store
+          this.embeddingStore.set(item.id, embedding);
+          // Add keywords to BM25
+          const { keywords } = getEmbedding(item.content);
+          this.bm25Index.addDocument(item.id, keywords);
+        } catch {
+          // L2 not available — just add to BM25
+          const { keywords } = getEmbedding(item.content);
+          this.bm25Index.addDocument(item.id, keywords);
+        }
+      }
+    } finally {
+      this.flushingQueue = false;
+    }
+
+    // Flush remaining if any
+    if (this.embeddingQueue.length > 0) {
+      void this.flushEmbeddingQueue();
+    }
   }
 }

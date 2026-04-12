@@ -9,6 +9,8 @@ export {
   simHashSimilarity,
   SemanticEmbedder,
   getEmbedding,
+  getEmbeddingAsync,
+  getSemanticEmbedder,
 } from './embeddings.js';
 export type { EmbeddingResult } from './embeddings.js';
 
@@ -36,3 +38,6 @@ export { EventBus } from './event-bus.js';
 
 export { Logger } from './logger.js';
 export type { LogLevel, LoggerOptions } from './logger.js';
+
+export { HNSWIndex } from './vector-index.js';
+export type { HNSWConfig, SearchResult } from './vector-index.js';
