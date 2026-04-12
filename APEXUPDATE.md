@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~30,300 LOC TypeScript | 458 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval
+**Current State:** ~33,600 LOC TypeScript | 512 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite
 **Target State:** ~36,400 LOC | ~764 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -58,41 +58,43 @@
 
 ---
 
-### Phase 21: Benchmarking & Evaluation Framework (~600 LOC, ~20 tests) [HIGH IMPACT]
+### Phase 21: Benchmarking & Evaluation Framework (~600 LOC, ~20 tests) [HIGH IMPACT] ✅ COMPLETED
 
 **Problem:** No way to measure if APEX is actually helping. Letta benchmark showed rigorous evaluation is critical -- many systems that "feel" good perform poorly on standardized tasks.
 
 **Research:** Letta LoCoMo benchmark (Aug 2025) | SWE-bench methodology | METR framework (2026)
 
+**Completed:** 2026-04-12 | 512 tests passing | TypeScript clean
+
 #### Recall Accuracy Benchmark
-- [ ] Create `src/benchmarks/locomo-adapt.ts` -- adapted LoCoMo for APEX
-- [ ] Seed memory with known episodes at various depths (10, 100, 500, 1000)
-- [ ] Test recall accuracy: exact match, semantic match, partial match
-- [ ] Measure recall@1, recall@5, recall@10, MRR
-- [ ] Track false positive rate (irrelevant results returned)
+- [x] Create `src/benchmarks/locomo-adapt.ts` -- adapted LoCoMo for APEX
+- [x] Seed memory with known episodes at various depths (10, 100, 500, 1000)
+- [x] Test recall accuracy: exact match, semantic match, partial match
+- [x] Measure recall@1, recall@5, recall@10, MRR
+- [x] Track false positive rate (irrelevant results returned)
 
 #### Skill Transfer Benchmark
-- [ ] Create `src/benchmarks/skill-transfer.ts`
-- [ ] Setup: learn skills in project A, measure applicability in project B
-- [ ] Measure: skill discovery rate, adaptation accuracy, confidence calibration
-- [ ] Test cross-language transfer (e.g., Node.js skill applied to Python project)
+- [x] Create `src/benchmarks/skill-transfer.ts`
+- [x] Setup: learn skills in project A, measure applicability in project B
+- [x] Measure: skill discovery rate, adaptation accuracy, confidence calibration
+- [x] Test cross-language transfer (e.g., Node.js skill applied to Python project)
 
 #### Reflection Quality Benchmark
-- [ ] Create `src/benchmarks/reflection-quality.ts`
-- [ ] Measure: does applying a reflection improve next-attempt success rate?
-- [ ] Track reflection actionability score (% of insights that are concrete)
-- [ ] Track reflection freshness (do old reflections still apply?)
+- [x] Create `src/benchmarks/reflection-quality.ts`
+- [x] Measure: does applying a reflection improve next-attempt success rate?
+- [x] Track reflection actionability score (% of insights that are concrete)
+- [x] Track reflection freshness (do old reflections still apply?)
 
 #### Consolidation Loss Benchmark
-- [ ] Measure information loss during working -> episodic -> semantic promotion
-- [ ] Track: can promoted entries still answer original queries?
-- [ ] Measure merge quality (do merged semantic entries preserve key facts?)
+- [x] Measure information loss during working -> episodic -> semantic promotion
+- [x] Track: can promoted entries still answer original queries?
+- [x] Measure merge quality (do merged semantic entries preserve key facts?)
 
 #### Dashboard & CI Integration
-- [ ] Create `src/benchmarks/dashboard.ts` -- HTML report generator
-- [ ] Show learning curves, benchmark scores, memory health over time
-- [ ] Add benchmark CI gate in `vitest.config.ts`
-- [ ] Latency gates: recall <100ms at 10K entries, embedding <50ms
+- [x] Create `src/benchmarks/dashboard.ts` -- HTML report generator
+- [x] Show learning curves, benchmark scores, memory health over time
+- [x] Add benchmark CI gate in `vitest.config.ts`
+- [x] Latency gates: recall <100ms at 10K entries, embedding <50ms
 
 ---
 
@@ -518,7 +520,7 @@
 | Wave | Phase | Description | LOC | Tests | Impact |
 |------|-------|-------------|-----|-------|--------|
 | 1 | 11 | Semantic Vector Memory | ~800 | 89 | HIGH | ✅ DONE |
-| 1 | 21 | Benchmarking Framework | ~600 | ~20 | HIGH |
+| 1 | 21 | Benchmarking Framework | ~3,276 | 54 | HIGH | ✅ DONE |
 | 1 | 22 | Safety Hardening | ~400 | ~40 | MEDIUM |
 | 2 | 12 | Verbal Reinforcement Learning | ~500 | ~30 | HIGH |
 | 2 | 13 | Enhanced MCTS Planning | ~600 | ~35 | HIGH |
