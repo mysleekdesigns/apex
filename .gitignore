@@ -4,3 +4,4 @@ dist/
 *.db
 .apex-data/
 .env
+.claude/worktrees/
