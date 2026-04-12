@@ -1,14 +1,17 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
 import path from 'path';
+import { LockManager } from './file-lock.js';
 
 const COLLECTIONS = ['episodes', 'memory', 'skills', 'reflections', 'metrics', 'snapshots'] as const;
 export type Collection = (typeof COLLECTIONS)[number];
 
 export class FileStore {
   private basePath: string;
+  private readonly locks: LockManager;
 
-  constructor(basePath: string) {
+  constructor(basePath: string, lockManager?: LockManager) {
     this.basePath = basePath;
+    this.locks = lockManager ?? new LockManager();
   }
 
   /** Create the .apex-data/ directory structure. */
@@ -31,10 +34,16 @@ export class FileStore {
 
   /** Write an item to a collection. Creates the collection directory if needed. */
   async write<T>(collection: string, id: string, data: T): Promise<void> {
-    const dirPath = path.join(this.basePath, collection);
-    await mkdir(dirPath, { recursive: true });
-    const filePath = path.join(dirPath, `${id}.json`);
-    await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    const lockKey = `${collection}:${id}`;
+    const release = await this.locks.acquire(lockKey);
+    try {
+      const dirPath = path.join(this.basePath, collection);
+      await mkdir(dirPath, { recursive: true });
+      const filePath = path.join(dirPath, `${id}.json`);
+      await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } finally {
+      release();
+    }
   }
 
   /** List all IDs in a collection. */
@@ -52,22 +61,32 @@ export class FileStore {
 
   /** Delete an item from a collection. */
   async delete(collection: string, id: string): Promise<void> {
+    const lockKey = `${collection}:${id}`;
+    const release = await this.locks.acquire(lockKey);
     try {
       const filePath = path.join(this.basePath, collection, `${id}.json`);
       await rm(filePath);
     } catch {
       // Already gone — fine
+    } finally {
+      release();
     }
   }
 
-  /** Read all items from a collection. */
+  /** Read all items from a collection. Acquires a collection-level lock. */
   async readAll<T>(collection: string): Promise<T[]> {
-    const ids = await this.list(collection);
-    const items: T[] = [];
-    for (const id of ids) {
-      const item = await this.read<T>(collection, id);
-      if (item !== null) items.push(item);
+    const lockKey = collection;
+    const release = await this.locks.acquire(lockKey);
+    try {
+      const ids = await this.list(collection);
+      const items: T[] = [];
+      for (const id of ids) {
+        const item = await this.read<T>(collection, id);
+        if (item !== null) items.push(item);
+      }
+      return items;
+    } finally {
+      release();
     }
-    return items;
   }
 }

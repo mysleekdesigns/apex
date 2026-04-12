@@ -27,6 +27,7 @@ import { Logger } from '../utils/logger.js';
 import { getEmbedding, getEmbeddingAsync, getSemanticEmbedder, extractKeywords, simHash } from '../utils/embeddings.js';
 import { HNSWIndex } from '../utils/vector-index.js';
 import { BM25Index, hybridSearch, type HybridInput } from '../utils/similarity.js';
+import { LockManager } from '../utils/file-lock.js';
 
 // ---------------------------------------------------------------------------
 // Options & stats
@@ -80,8 +81,8 @@ export class MemoryManager {
   private bm25Index: BM25Index;
   /** Queue of entries pending async embedding. */
   private embeddingQueue: Array<{ id: string; content: string }> = [];
-  /** Guard to prevent concurrent queue flushes. */
-  private flushingQueue = false;
+  /** Lock manager for concurrency protection. */
+  private readonly lockManager: LockManager;
 
   constructor(opts: MemoryManagerOptions) {
     const logger = opts.logger ?? new Logger({ prefix: 'apex:memory' });
@@ -136,6 +137,7 @@ export class MemoryManager {
     });
 
     this.bm25Index = new BM25Index();
+    this.lockManager = new LockManager();
 
     // Wire overflow: working -> episodic
     this.eventBus.on('memory:working-overflow', async (entry: unknown) => {
@@ -331,6 +333,20 @@ export class MemoryManager {
    * 5. Archive low-confidence skills
    */
   async consolidate(): Promise<ConsolidationReport> {
+    // Prevent concurrent consolidation runs
+    const release = this.lockManager.tryAcquire('consolidation');
+    if (!release) {
+      this.logger.info('Consolidation already in progress — skipping');
+      return {
+        timestamp: Date.now(),
+        movedToEpisodic: 0,
+        movedToSemantic: 0,
+        evicted: 0,
+        merged: 0,
+      };
+    }
+
+    try {
     await this.ensureLoaded();
 
     const tierSizes = await this.getTierSizes();
@@ -384,6 +400,9 @@ export class MemoryManager {
     this.logger.info('Consolidation complete', report);
 
     return report;
+    } finally {
+      release();
+    }
   }
 
   // ── Snapshots (apex_snapshot, apex_rollback) ─────────────────────
@@ -579,7 +598,7 @@ export class MemoryManager {
    */
   private queueEmbedding(id: string, content: string): void {
     this.embeddingQueue.push({ id, content });
-    if (!this.flushingQueue && this.embeddingQueue.length >= 5) {
+    if (!this.lockManager.isLocked('embedding-flush') && this.embeddingQueue.length >= 5) {
       void this.flushEmbeddingQueue();
     }
   }
@@ -589,11 +608,12 @@ export class MemoryManager {
    * Gracefully degrades to BM25-only if L2 is unavailable.
    */
   private async flushEmbeddingQueue(): Promise<void> {
-    if (this.flushingQueue || this.embeddingQueue.length === 0) return;
-    this.flushingQueue = true;
+    if (this.embeddingQueue.length === 0) return;
+    const release = this.lockManager.tryAcquire('embedding-flush');
+    if (!release) return; // Already flushing
 
-    const batch = this.embeddingQueue.splice(0, 20);
     try {
+      const batch = this.embeddingQueue.splice(0, 20);
       const embedder = getSemanticEmbedder();
       for (const item of batch) {
         try {
@@ -615,7 +635,7 @@ export class MemoryManager {
         }
       }
     } finally {
-      this.flushingQueue = false;
+      release();
     }
 
     // Flush remaining if any
