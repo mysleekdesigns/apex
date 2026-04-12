@@ -785,4 +785,68 @@ export const tools: ToolDefinition[] = [
       properties: {},
     },
   },
+
+  // ── 32. apex_self_benchmark ──────────────────────────────────────
+  {
+    name: 'apex_self_benchmark',
+    description:
+      'Run the self-benchmarking suite to measure APEX performance across recall accuracy, reflection quality, skill reuse, planning effectiveness, and consolidation efficiency. Returns composite and per-dimension scores. Use "run" to execute benchmarks, "history" to view past results, "compare" to diff two results, or "seed" to generate synthetic test data.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['run', 'history', 'compare', 'seed'],
+          description: 'Action to perform: "run" executes the benchmark suite, "history" shows past results, "compare" diffs two results, "seed" generates synthetic episodes.',
+        },
+        baselineId: {
+          type: 'string',
+          description: 'Baseline result ID (for compare action).',
+        },
+        candidateId: {
+          type: 'string',
+          description: 'Candidate result ID (for compare action).',
+        },
+        seedCount: {
+          type: 'number',
+          description: 'Number of synthetic episodes to generate (for seed action, default: 20).',
+        },
+      },
+      required: ['action'],
+    },
+  },
+
+  // ── 33. apex_self_modify ─────────────────────────────────────────
+  {
+    name: 'apex_self_modify',
+    description:
+      'Self-improvement pipeline: analyze benchmark weak spots, propose config changes, evaluate proposals, and track modification history. Implements Darwin-Godel Machine pattern with strict performance gates (≥5% improvement required, no dimension may degrade >2%).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['analyze', 'evaluate', 'history', 'rollback-check', 'stats'],
+          description: 'Action: "analyze" finds weak spots and proposes changes, "evaluate" tests a proposal, "history" shows past modifications, "rollback-check" checks if rollback needed, "stats" shows aggregate stats.',
+        },
+        benchmarkId: {
+          type: 'string',
+          description: 'Benchmark result ID to analyze (for analyze action).',
+        },
+        proposalId: {
+          type: 'string',
+          description: 'Proposal ID to evaluate (for evaluate action).',
+        },
+        baselineBenchmarkId: {
+          type: 'string',
+          description: 'Baseline benchmark ID (for evaluate action).',
+        },
+        candidateBenchmarkId: {
+          type: 'string',
+          description: 'Candidate benchmark ID after applying proposal (for evaluate action).',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];

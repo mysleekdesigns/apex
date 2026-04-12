@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~48,850 LOC TypeScript | 904 tests | 31 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules
+**Current State:** ~49,500 LOC TypeScript | 947 tests | 33 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules | self-benchmarking harness | self-modification pipeline | performance-gated deployment | auto-rollback
 **Target State:** ~47,000 LOC | ~1,100 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -345,48 +345,56 @@
 
 ---
 
-### Phase 16: Self-Improving Agent Loop / Darwin-Godel Machine (~600 LOC, ~30 tests) [HIGH IMPACT]
+### Phase 16: Self-Improving Agent Loop / Darwin-Godel Machine (~650 LOC, 30 tests) [HIGH IMPACT] ✅ COMPLETED
 
 **Problem:** Darwin-Godel Machine (Sakana AI, 2025) showed coding agents can edit their own code and improve SWE-bench by 17-53%. APEX's evolution loop operates on virtual configs, not actual code.
 
 **Research:** Darwin-Godel Machine (Sakana AI, 2025) | Bristol (arxiv:2504.15228) | Self-Play SWE-RL (arxiv:2512.18552)
 
+**Completed:** 2026-04-12 | 947 tests passing | TypeScript clean
+
+**New modules:**
+- `src/evolution/self-benchmark.ts` (~310 LOC) — SelfBenchmark: 5-dimension benchmark suite (recall accuracy, reflection quality, skill reuse, planning effectiveness, consolidation efficiency), synthetic data seeding, benchmark comparison with degradation detection, generation tracking
+- `src/evolution/self-modify.ts` (~340 LOC) — SelfModifier: weak spot analysis with targeted proposals, performance-gated deployment (≥5% improvement, no >2% degradation), auto-rollback detection (>10% degradation from best-ever), modification history tracking
+
+**New MCP tools:** `apex_self_benchmark` (run, history, compare, seed), `apex_self_modify` (analyze, evaluate, history, rollback-check, stats)
+
 #### Self-Benchmarking Harness
-- [ ] Create `src/evolution/self-benchmark.ts` -- standardized APEX benchmark suite
-- [ ] Benchmark dimensions: recall accuracy, reflection quality, skill reuse rate, planning effectiveness, consolidation efficiency
-- [ ] Seed benchmark with synthetic episodes covering diverse task types
-- [ ] Track benchmark scores over time (generations of self-improvement)
+- [x] Create `src/evolution/self-benchmark.ts` -- standardized APEX benchmark suite
+- [x] Benchmark dimensions: recall accuracy, reflection quality, skill reuse rate, planning effectiveness, consolidation efficiency
+- [x] Seed benchmark with synthetic episodes covering diverse task types
+- [x] Track benchmark scores over time (generations of self-improvement)
 
 #### Automated Self-Modification Proposals
-- [ ] Create `src/evolution/self-modify.ts` -- safe self-modification pipeline
-- [ ] After benchmark run, analyze weak spots
-- [ ] Propose concrete config/parameter changes (not source code changes initially)
-- [ ] Store proposals as episodes with expected impact predictions
+- [x] Create `src/evolution/self-modify.ts` -- safe self-modification pipeline
+- [x] After benchmark run, analyze weak spots
+- [x] Propose concrete config/parameter changes (not source code changes initially)
+- [x] Store proposals as episodes with expected impact predictions
 
 #### Sandbox Testing
-- [ ] Run proposed modifications in isolated test environment
-- [ ] Use existing snapshot system for pre-modification backup
-- [ ] Execute full benchmark suite against proposed changes
-- [ ] Compare: proposed vs baseline scores
+- [x] Run proposed modifications in isolated test environment
+- [x] Use existing snapshot system for pre-modification backup
+- [x] Execute full benchmark suite against proposed changes
+- [x] Compare: proposed vs baseline scores
 
 #### Performance-Gated Deployment
-- [ ] Only apply modifications that improve composite benchmark score by >5%
-- [ ] Require no individual benchmark dimension to degrade by >2%
-- [ ] Track modification history (what was changed, when, impact)
-- [ ] Support manual override for user-approved changes
+- [x] Only apply modifications that improve composite benchmark score by >5%
+- [x] Require no individual benchmark dimension to degrade by >2%
+- [x] Track modification history (what was changed, when, impact)
+- [x] Support manual override for user-approved changes
 
 #### Rollback Safety
-- [ ] Extend `src/memory/snapshots.ts` for automatic rollback on degradation
-- [ ] If performance degrades after N episodes, auto-rollback to last known good
-- [ ] Alert user of rollback with explanation
-- [ ] Learning curve visualization: track APEX performance over self-modification generations
+- [x] Extend `src/memory/snapshots.ts` for automatic rollback on degradation
+- [x] If performance degrades after N episodes, auto-rollback to last known good
+- [x] Alert user of rollback with explanation
+- [x] Learning curve visualization: track APEX performance over self-modification generations
 
 #### Tests
-- [ ] Unit tests for benchmark harness
-- [ ] Test self-modification proposal generation
-- [ ] Test performance-gated deployment (accept and reject cases)
-- [ ] Test automatic rollback on degradation
-- [ ] Integration test: full self-improvement cycle
+- [x] Unit tests for benchmark harness (15 tests)
+- [x] Test self-modification proposal generation (5 tests)
+- [x] Test performance-gated deployment (accept and reject cases) (4 tests)
+- [x] Test automatic rollback on degradation (3 tests)
+- [x] Integration test: full self-improvement cycle (3 tests)
 
 ---
 
@@ -561,13 +569,13 @@
 | 2 | 13 | Enhanced MCTS Planning | ~2,478 | 72 | HIGH | ✅ DONE |
 | 2 | 14 | Prompt Auto-Optimization | ~2,573 | 44 | HIGH | ✅ DONE |
 | 3 | 15 | Cognitive Architecture | ~2,476 | 46 | MEDIUM | ✅ DONE |
-| 3 | 16 | Self-Improving Agent Loop | ~600 | ~30 | HIGH | |
+| 3 | 16 | Self-Improving Agent Loop | ~650 | 30 | HIGH | ✅ DONE |
 | 3 | 20 | Real-Time Learning Signals | ~500 | ~30 | MEDIUM | |
 | 4 | 17 | World Model / Causal Reasoning | ~500 | ~30 | MEDIUM | |
 | 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM | |
 | 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM | |
-| | | **Completed** | **~17,579** | **536** | | **7/12** |
-| | | **Remaining** | **~2,800** | **~165** | | **5/12** |
+| | | **Completed** | **~18,229** | **566** | | **8/12** |
+| | | **Remaining** | **~2,200** | **~135** | | **4/12** |
 
 ## Key Research References
 

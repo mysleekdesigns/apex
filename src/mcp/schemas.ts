@@ -1,7 +1,7 @@
 /**
  * APEX MCP Input Validation Schemas
  *
- * Zod schemas for all 27 MCP tool handlers.
+ * Zod schemas for all 33 MCP tool handlers.
  * Each schema matches the JSON Schema `inputSchema` defined in tools.ts.
  */
 
@@ -399,6 +399,31 @@ export const CognitiveStatusSchema = z.object({});
 export type CognitiveStatusInput = z.infer<typeof CognitiveStatusSchema>;
 
 // ---------------------------------------------------------------------------
+// 32. apex_self_benchmark
+// ---------------------------------------------------------------------------
+
+export const SelfBenchmarkSchema = z.object({
+  action: z.enum(['run', 'history', 'compare', 'seed']),
+  baselineId: z.string().min(1).optional(),
+  candidateId: z.string().min(1).optional(),
+  seedCount: z.number().optional(),
+});
+export type SelfBenchmarkInput = z.infer<typeof SelfBenchmarkSchema>;
+
+// ---------------------------------------------------------------------------
+// 33. apex_self_modify
+// ---------------------------------------------------------------------------
+
+export const SelfModifySchema = z.object({
+  action: z.enum(['analyze', 'evaluate', 'history', 'rollback-check', 'stats']),
+  benchmarkId: z.string().min(1).optional(),
+  proposalId: z.string().min(1).optional(),
+  baselineBenchmarkId: z.string().min(1).optional(),
+  candidateBenchmarkId: z.string().min(1).optional(),
+});
+export type SelfModifyInput = z.infer<typeof SelfModifySchema>;
+
+// ---------------------------------------------------------------------------
 // Schema map — keyed by tool name for dynamic lookup
 // ---------------------------------------------------------------------------
 
@@ -434,4 +459,6 @@ export const schemaMap: Record<string, z.ZodSchema> = {
   apex_prompt_module: PromptModuleSchema,
   apex_goals: GoalsSchema,
   apex_cognitive_status: CognitiveStatusSchema,
+  apex_self_benchmark: SelfBenchmarkSchema,
+  apex_self_modify: SelfModifySchema,
 };

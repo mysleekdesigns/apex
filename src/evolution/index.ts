@@ -94,3 +94,20 @@ export {
   type LearningCurvePoint as RegressionLearningCurvePoint,
   type RegressionDetectorOptions,
 } from './regression-detector.js';
+
+export {
+  SelfBenchmark,
+  type BenchmarkDimension,
+  type DimensionScore,
+  type BenchmarkResult,
+  type BenchmarkComparison,
+  type SelfBenchmarkOptions,
+} from './self-benchmark.js';
+
+export {
+  SelfModifier,
+  type ModificationProposal,
+  type ModificationResult,
+  type RollbackDecision,
+  type SelfModifierOptions,
+} from './self-modify.js';

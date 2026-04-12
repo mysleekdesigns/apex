@@ -41,6 +41,8 @@ import { ActivationEngine } from '../cognitive/activation.js';
 import { CognitiveCycle } from '../cognitive/cycle.js';
 import { GoalStack } from '../cognitive/goal-stack.js';
 import { ProductionRuleEngine } from '../cognitive/production-rules.js';
+import { SelfBenchmark } from '../evolution/self-benchmark.js';
+import { SelfModifier } from '../evolution/self-modify.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -75,6 +77,8 @@ import {
   ArchSuggestSchema,
   GoalsSchema,
   CognitiveStatusSchema,
+  SelfBenchmarkSchema,
+  SelfModifySchema,
 } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -131,6 +135,8 @@ let activationEngine: ActivationEngine | null = null;
 let cognitiveCycle: CognitiveCycle | null = null;
 let goalStack: GoalStack | null = null;
 let productionRuleEngine: ProductionRuleEngine | null = null;
+let selfBenchmark: SelfBenchmark | null = null;
+let selfModifier: SelfModifier | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -313,6 +319,24 @@ async function getOrCreateCognitiveSubsystems(projectPath?: string): Promise<{
     goals: goalStack,
     rules: productionRuleEngine,
   };
+}
+
+async function getOrCreateSelfImprovementSubsystems(projectPath?: string): Promise<{
+  benchmark: SelfBenchmark;
+  modifier: SelfModifier;
+}> {
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!selfBenchmark) {
+    selfBenchmark = new SelfBenchmark({ fileStore: store, logger });
+  }
+  if (!selfModifier) {
+    selfModifier = new SelfModifier({ fileStore: store, logger });
+  }
+
+  return { benchmark: selfBenchmark, modifier: selfModifier };
 }
 
 // ---------------------------------------------------------------------------
@@ -1782,6 +1806,189 @@ async function handleCognitiveStatus(args: Record<string, unknown>): Promise<Cal
   });
 }
 
+// ── 32. apex_self_benchmark ────────────────────────────────────────
+
+async function handleSelfBenchmark(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SelfBenchmarkSchema, args);
+  if (!v.success) return v.error;
+  const { action, baselineId, candidateId, seedCount } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_self_benchmark');
+
+  const { benchmark } = await getOrCreateSelfImprovementSubsystems();
+
+  if (action === 'run') {
+    const mgr = await getOrCreateManager();
+    const stats = await mgr.status();
+    const store = new FileStore(getProjectDataPath(process.cwd()));
+    await store.init();
+
+    // Gather data from memory tiers
+    const episodes = await store.readAll<Episode>('episodes');
+    const reflections = await store.readAll<Reflection>('reflections');
+    const skills = await store.readAll<any>('skills');
+
+    const config = stats as unknown as Record<string, unknown>;
+    const result = await benchmark.runSuite(
+      Object.values(episodes),
+      Object.values(reflections),
+      Object.values(skills),
+      config,
+    );
+
+    return ok({
+      status: 'ok',
+      benchmarkResult: {
+        id: result.id,
+        generation: result.generation,
+        compositeScore: Math.round(result.compositeScore * 1000) / 1000,
+        dimensions: result.dimensionScores.map((d) => ({
+          dimension: d.dimension,
+          score: Math.round(d.score * 1000) / 1000,
+          details: d.details,
+        })),
+      },
+    });
+  }
+
+  if (action === 'history') {
+    const history = await benchmark.getHistory();
+    return ok({
+      status: 'ok',
+      history: history.map((r) => ({
+        id: r.id,
+        generation: r.generation,
+        compositeScore: Math.round(r.compositeScore * 1000) / 1000,
+        timestamp: new Date(r.timestamp).toISOString(),
+      })),
+    });
+  }
+
+  if (action === 'compare') {
+    if (!baselineId || !candidateId) {
+      return fail('compare requires baselineId and candidateId');
+    }
+    const comparison = await benchmark.compareBenchmarks(baselineId, candidateId);
+    return ok({ status: 'ok', comparison });
+  }
+
+  if (action === 'seed') {
+    const count = seedCount ?? 20;
+    const episodes = await benchmark.seedSyntheticData(count);
+
+    // Record them via direct file store write (same pattern as handleRecord)
+    const store2 = new FileStore(getProjectDataPath(process.cwd()));
+    await store2.init();
+    for (const ep of episodes) {
+      await store2.write('episodes', ep.id, ep);
+    }
+
+    return ok({
+      status: 'ok',
+      seeded: episodes.length,
+      message: `Generated and recorded ${episodes.length} synthetic episodes for benchmarking.`,
+    });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
+// ── 33. apex_self_modify ───────────────────────────────────────────
+
+async function handleSelfModify(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SelfModifySchema, args);
+  if (!v.success) return v.error;
+  const { action, benchmarkId, proposalId, baselineBenchmarkId, candidateBenchmarkId } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_self_modify');
+
+  const { benchmark, modifier } = await getOrCreateSelfImprovementSubsystems();
+
+  if (action === 'analyze') {
+    if (!benchmarkId) return fail('analyze requires benchmarkId');
+    const history = await benchmark.getHistory();
+    const result = history.find((r) => r.id === benchmarkId);
+    if (!result) return fail(`benchmark result ${benchmarkId} not found`);
+
+    const proposals = await modifier.analyzeWeakSpots(result);
+    return ok({
+      status: 'ok',
+      proposals: proposals.map((p) => ({
+        id: p.id,
+        target: p.target,
+        currentValue: p.currentValue,
+        proposedValue: p.proposedValue,
+        expectedImpact: `${p.expectedImpact.toFixed(1)}%`,
+        rationale: p.rationale,
+        weakDimension: p.weakDimension,
+      })),
+    });
+  }
+
+  if (action === 'evaluate') {
+    if (!proposalId || !baselineBenchmarkId || !candidateBenchmarkId) {
+      return fail('evaluate requires proposalId, baselineBenchmarkId, and candidateBenchmarkId');
+    }
+    const history = await benchmark.getHistory();
+    const baseline = history.find((r) => r.id === baselineBenchmarkId);
+    const candidate = history.find((r) => r.id === candidateBenchmarkId);
+    if (!baseline) return fail(`baseline benchmark ${baselineBenchmarkId} not found`);
+    if (!candidate) return fail(`candidate benchmark ${candidateBenchmarkId} not found`);
+
+    const proposals = await modifier.getProposalHistory();
+    const proposal = proposals.find((p) => p.id === proposalId);
+    if (!proposal) return fail(`proposal ${proposalId} not found`);
+
+    const result = await modifier.evaluateProposal(proposal, baseline, candidate);
+    return ok({
+      status: 'ok',
+      result: {
+        applied: result.applied,
+        improvement: `${result.improvement.toFixed(1)}%`,
+        rolledBack: result.rolledBack,
+        reason: result.reason,
+        dimensionDeltas: result.dimensionDeltas,
+      },
+    });
+  }
+
+  if (action === 'history') {
+    const modifications = await modifier.getModificationHistory();
+    return ok({
+      status: 'ok',
+      modifications: modifications.map((m) => ({
+        id: m.id,
+        proposalId: m.proposalId,
+        applied: m.applied,
+        improvement: `${m.improvement.toFixed(1)}%`,
+        rolledBack: m.rolledBack,
+        reason: m.reason,
+        timestamp: new Date(m.timestamp).toISOString(),
+      })),
+    });
+  }
+
+  if (action === 'rollback-check') {
+    const history = await benchmark.getHistory();
+    if (history.length < 2) {
+      return ok({ status: 'ok', message: 'Not enough benchmark history for rollback check', shouldRollback: false });
+    }
+    const current = history[0];
+    const best = history.reduce((a, b) => (a.compositeScore > b.compositeScore ? a : b));
+    const decision = await modifier.autoRollbackCheck(current, best, history.length);
+    return ok({ status: 'ok', decision });
+  }
+
+  if (action === 'stats') {
+    const stats = await modifier.getStats();
+    return ok({ status: 'ok', stats });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -1816,4 +2023,6 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_prompt_module', handlePromptModule],
   ['apex_goals', handleGoals],
   ['apex_cognitive_status', handleCognitiveStatus],
+  ['apex_self_benchmark', handleSelfBenchmark],
+  ['apex_self_modify', handleSelfModify],
 ]);
