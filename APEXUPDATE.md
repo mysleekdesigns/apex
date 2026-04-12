@@ -2,8 +2,8 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~33,600 LOC TypeScript | 512 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite
-**Target State:** ~36,400 LOC | ~764 tests | 39+ MCP tools | 12 new frontier capabilities
+**Current State:** ~37,600 LOC TypeScript | 713 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds
+**Target State:** ~40,400 LOC | ~965 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
 
@@ -98,40 +98,45 @@
 
 ---
 
-### Phase 22: Safety & Robustness Hardening (~400 LOC, ~40 tests) [MEDIUM IMPACT]
+### Phase 22: Safety & Robustness Hardening (~4,024 LOC, ~202 tests) [MEDIUM IMPACT] ✅ COMPLETED
 
 **Problem:** No input validation in handlers, silent file read failures, no transaction semantics for consolidation, no concurrency protection.
 
+**Completed:** 2026-04-12 | 713 tests passing | TypeScript clean
+
 #### Input Validation
-- [ ] Add `zod` dependency to `package.json`
-- [ ] Create Zod schemas for all 27 tool input types
-- [ ] Add validation at handler entry points in `src/mcp/handlers.ts`
-- [ ] Return structured error messages for invalid inputs
-- [ ] Test: fuzz all handlers with malformed inputs
+- [x] Add `zod` dependency to `package.json`
+- [x] Create Zod schemas for all 27 tool input types in `src/mcp/schemas.ts`
+- [x] Add validation at handler entry points in `src/mcp/handlers.ts` via `validateArgs` helper
+- [x] Return structured error messages for invalid inputs with field-level details
+- [x] Test: fuzz all 27 handlers with malformed inputs (540 validation runs)
 
 #### Atomic File Operations
-- [ ] Modify `src/utils/file-store.ts` for write-to-temp-then-rename pattern
-- [ ] Add JSON validation on read (detect corrupted files)
-- [ ] Auto-restore from latest snapshot on corruption detection
-- [ ] Add checksum verification for critical files
+- [x] Modify `src/utils/file-store.ts` for write-to-temp-then-rename pattern (unique nonce suffix)
+- [x] Add JSON validation on read (detect corrupted files)
+- [x] Auto-restore from latest snapshot on corruption detection
+- [x] Add SHA-256 checksum verification for critical files (`.sha256` companion files)
+- [x] Add `.bak` backup files before each overwrite
 
 #### Concurrency Protection
-- [ ] Create `src/utils/file-lock.ts` -- file-level advisory locking
-- [ ] Add lock acquisition/release around memory mutations in manager
-- [ ] Implement lock timeout with deadlock detection
-- [ ] Test: concurrent read/write stress test
+- [x] Create `src/utils/file-lock.ts` -- in-process async mutex with FIFO queuing
+- [x] Add lock acquisition/release around memory mutations in manager and file store
+- [x] Implement lock timeout with deadlock detection and force-release
+- [x] Test: concurrent read/write stress tests (10 concurrent writes, no corruption)
 
 #### Transaction Semantics
-- [ ] Wrap consolidation in `src/memory/manager.ts` with atomic transaction
-- [ ] If any step fails, rollback all changes (use pre-consolidation snapshot)
-- [ ] Add audit log for all memory mutations
-- [ ] Test: simulate mid-consolidation crash and verify recovery
+- [x] Create `src/memory/transaction.ts` -- in-memory checkpoint with rollback
+- [x] Wrap consolidation in `src/memory/manager.ts` with atomic transaction
+- [x] If any step fails, rollback all changes via `structuredClone` checkpoint
+- [x] Create `src/memory/audit-log.ts` -- append-only JSONL audit log with auto-rotation
+- [x] Test: simulate mid-consolidation crash and verify recovery
 
 #### Memory Bounds
-- [ ] Enforce hard limits with graceful degradation (not just configurable defaults)
-- [ ] Add memory usage monitoring (total file size, entry counts per tier)
-- [ ] Alert when approaching 80% capacity
-- [ ] Test: exceed limits and verify graceful eviction
+- [x] Create `src/memory/bounds.ts` -- soft/hard limit enforcement with tier-specific eviction
+- [x] Enforce hard limits with graceful degradation (evict lowest-value entries first)
+- [x] Add memory usage monitoring (total file size, entry counts per tier) in `apex_status`
+- [x] Alert when approaching 80% capacity with actionable messages
+- [x] Test: exceed limits and verify graceful eviction across all tiers
 
 ---
 
@@ -521,7 +526,7 @@
 |------|-------|-------------|-----|-------|--------|
 | 1 | 11 | Semantic Vector Memory | ~800 | 89 | HIGH | ✅ DONE |
 | 1 | 21 | Benchmarking Framework | ~3,276 | 54 | HIGH | ✅ DONE |
-| 1 | 22 | Safety Hardening | ~400 | ~40 | MEDIUM |
+| 1 | 22 | Safety Hardening | ~4,024 | 202 | MEDIUM | ✅ DONE |
 | 2 | 12 | Verbal Reinforcement Learning | ~500 | ~30 | HIGH |
 | 2 | 13 | Enhanced MCTS Planning | ~600 | ~35 | HIGH |
 | 2 | 14 | Prompt Auto-Optimization | ~500 | ~25 | HIGH |
