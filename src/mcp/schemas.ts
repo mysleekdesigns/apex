@@ -350,6 +350,30 @@ export const ArchSuggestSchema = z.object({});
 export type ArchSuggestInput = z.infer<typeof ArchSuggestSchema>;
 
 // ---------------------------------------------------------------------------
+// 28. apex_prompt_optimize
+// ---------------------------------------------------------------------------
+
+export const PromptOptimizeSchema = z.object({
+  action: z.enum(['optimize', 'status', 'conclude-experiments']),
+});
+export type PromptOptimizeInput = z.infer<typeof PromptOptimizeSchema>;
+
+// ---------------------------------------------------------------------------
+// 29. apex_prompt_module
+// ---------------------------------------------------------------------------
+
+export const PromptModuleSchema = z.object({
+  action: z.enum(['register', 'list', 'get', 'hot-swap', 'add-variant', 'examples']),
+  name: z.string().min(1).optional(),
+  category: z.enum(['tool-description', 'behavior', 'few-shot']).optional(),
+  content: z.string().min(1).optional(),
+  mutationType: z
+    .enum(['rephrase', 'add-example', 'remove-example', 'adjust-emphasis', 'simplify', 'elaborate'])
+    .optional(),
+});
+export type PromptModuleInput = z.infer<typeof PromptModuleSchema>;
+
+// ---------------------------------------------------------------------------
 // Schema map — keyed by tool name for dynamic lookup
 // ---------------------------------------------------------------------------
 
@@ -381,4 +405,6 @@ export const schemaMap: Record<string, z.ZodSchema> = {
   apex_arch_status: ArchStatusSchema,
   apex_arch_mutate: ArchMutateSchema,
   apex_arch_suggest: ArchSuggestSchema,
+  apex_prompt_optimize: PromptOptimizeSchema,
+  apex_prompt_module: PromptModuleSchema,
 };

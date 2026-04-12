@@ -670,8 +670,8 @@ describe('ArchSuggestSchema', () => {
 // ---------------------------------------------------------------------------
 
 describe('schemaMap', () => {
-  it('has entries for all 27 tools', () => {
-    expect(Object.keys(schemaMap)).toHaveLength(27);
+  it('has entries for all 29 tools', () => {
+    expect(Object.keys(schemaMap)).toHaveLength(29);
   });
 
   const toolNames = [
@@ -682,7 +682,8 @@ describe('schemaMap', () => {
     'apex_foresight_check', 'apex_foresight_resolve', 'apex_population_status',
     'apex_population_evolve', 'apex_tool_propose', 'apex_tool_verify',
     'apex_tool_list', 'apex_tool_compose', 'apex_arch_status',
-    'apex_arch_mutate', 'apex_arch_suggest',
+    'apex_arch_mutate', 'apex_arch_suggest', 'apex_prompt_optimize',
+    'apex_prompt_module',
   ];
 
   it.each(toolNames)('contains schema for %s', (name) => {

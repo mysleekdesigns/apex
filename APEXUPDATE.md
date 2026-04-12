@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~43,800 LOC TypeScript | 814 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence
+**Current State:** ~46,370 LOC TypeScript | 858 tests | 29 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection
 **Target State:** ~47,000 LOC | ~1,100 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -235,40 +235,51 @@
 
 ---
 
-### Phase 14: DSPy-Inspired Prompt Auto-Optimization (~500 LOC, ~25 tests) [HIGH IMPACT]
+### Phase 14: DSPy-Inspired Prompt Auto-Optimization (~2,573 LOC, 44 tests) [HIGH IMPACT] ✅ COMPLETED
 
 **Problem:** CLAUDE.md instructions are static. DSPy (Stanford, 24K+ GitHub stars) showed algorithmically optimized prompts outperform hand-written ones by 20-40%.
 
 **Research:** DSPy (Stanford NLP) | MIPROv2 | TextGrad
 
+**Completed:** 2026-04-12 | 858 tests passing | TypeScript clean
+
+**New modules:**
+- `src/mcp/dynamic-descriptions.ts` (297 LOC) — PromptModuleRegistry: modular prompt units with versioning, A/B variants, effectiveness metrics, hot-swap support
+- `src/integration/ab-testing.ts` (265 LOC) — ABTestManager: chi-squared significance testing, 50/50 variant assignment, auto-evaluation and conclusion
+- `src/evolution/prompt-optimizer.ts` (424 LOC) — PromptOptimizer: 6 rule-based mutation strategies (rephrase, simplify, elaborate, adjust-emphasis, add/remove examples), heuristic impact estimation, PromptSuggestion-compatible output
+- `src/evolution/few-shot-curator.ts` (258 LOC) — FewShotCurator: episode-based example extraction, quality ranking with rotation, usage/outcome tracking, pruning
+- `src/evolution/regression-detector.ts` (330 LOC) — RegressionDetector: composite scoring, configurable warning/critical thresholds, linear regression trend detection, snapshot eviction, rollback recommendations
+
+**New MCP tools:** `apex_prompt_optimize` (run optimization rounds, view status, conclude experiments), `apex_prompt_module` (register, list, get, hot-swap, add-variant, examples)
+
 #### Modular Prompt System
-- [ ] Decompose CLAUDE.md into modular prompt "modules" (one per tool/behavior)
-- [ ] Create `src/mcp/dynamic-descriptions.ts` -- dynamic tool descriptions
-- [ ] Each module: instruction text + few-shot examples + effectiveness metrics
-- [ ] Support hot-swapping prompt modules without server restart
+- [x] Decompose CLAUDE.md into modular prompt "modules" (one per tool/behavior)
+- [x] Create `src/mcp/dynamic-descriptions.ts` -- dynamic tool descriptions
+- [x] Each module: instruction text + few-shot examples + effectiveness metrics
+- [x] Support hot-swapping prompt modules without server restart
 
 #### A/B Testing Framework
-- [ ] Extend `src/integration/effectiveness-tracker.ts` with A/B testing
-- [ ] Track which prompt variants lead to better: recall hit rate, reflection quality, skill reuse
-- [ ] Statistical significance testing (chi-squared) before declaring a winner
-- [ ] Automatic promotion of winning variants
+- [x] Extend `src/integration/effectiveness-tracker.ts` with A/B testing
+- [x] Track which prompt variants lead to better: recall hit rate, reflection quality, skill reuse
+- [x] Statistical significance testing (chi-squared) before declaring a winner
+- [x] Automatic promotion of winning variants
 
 #### Automated Prompt Mutation
-- [ ] Create `src/evolution/prompt-optimizer.ts` -- prompt mutation engine
-- [ ] Mutation types: add example, remove example, rephrase instruction, adjust emphasis
-- [ ] Based on effectiveness metrics, suggest and test modifications
-- [ ] `apex_arch_suggest` extended to include prompt optimization suggestions
+- [x] Create `src/evolution/prompt-optimizer.ts` -- prompt mutation engine
+- [x] Mutation types: add example, remove example, rephrase instruction, adjust emphasis
+- [x] Based on effectiveness metrics, suggest and test modifications
+- [x] `apex_arch_suggest` extended to include prompt optimization suggestions
 
 #### Few-Shot Example Curation
-- [ ] Auto-select best few-shot examples from successful episodes
-- [ ] Inject curated examples into tool descriptions
-- [ ] Track which examples improve tool usage patterns
-- [ ] Rotate examples to avoid overfitting to specific patterns
+- [x] Auto-select best few-shot examples from successful episodes
+- [x] Inject curated examples into tool descriptions
+- [x] Track which examples improve tool usage patterns
+- [x] Rotate examples to avoid overfitting to specific patterns
 
 #### Performance Regression Detection
-- [ ] Alert when a prompt change degrades performance vs baseline
-- [ ] Automatic rollback of prompt changes that degrade metrics
-- [ ] Track prompt performance over time (learning curve per module)
+- [x] Alert when a prompt change degrades performance vs baseline
+- [x] Automatic rollback of prompt changes that degrade metrics
+- [x] Track prompt performance over time (learning curve per module)
 
 ---
 
@@ -538,15 +549,15 @@
 | 1 | 22 | Safety Hardening | ~4,024 | 202 | MEDIUM | ✅ DONE |
 | 2 | 12 | Verbal Reinforcement Learning | ~1,952 | 29 | HIGH | ✅ DONE |
 | 2 | 13 | Enhanced MCTS Planning | ~2,478 | 72 | HIGH | ✅ DONE |
-| 2 | 14 | Prompt Auto-Optimization | ~500 | ~25 | HIGH | |
+| 2 | 14 | Prompt Auto-Optimization | ~2,573 | 44 | HIGH | ✅ DONE |
 | 3 | 15 | Cognitive Architecture | ~700 | ~40 | MEDIUM | |
 | 3 | 16 | Self-Improving Agent Loop | ~600 | ~30 | HIGH | |
 | 3 | 20 | Real-Time Learning Signals | ~500 | ~30 | MEDIUM | |
 | 4 | 17 | World Model / Causal Reasoning | ~500 | ~30 | MEDIUM | |
 | 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM | |
 | 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM | |
-| | | **Completed** | **~12,530** | **446** | | **5/12** |
-| | | **Remaining** | **~4,000** | **~230** | | **7/12** |
+| | | **Completed** | **~15,103** | **490** | | **6/12** |
+| | | **Remaining** | **~3,500** | **~205** | | **6/12** |
 
 ## Key Research References
 
@@ -570,7 +581,7 @@
 1. Unit tests with >90% coverage on new modules
 2. Integration tests: end-to-end workflow (record -> learn -> recall -> improve)
 3. Benchmark comparison: before/after metrics
-4. Regression: all existing 814 tests must pass
+4. Regression: all existing 858 tests must pass
 5. Performance: recall <100ms at 10K entries, embedding <50ms
 
 **Per Wave:**

@@ -71,3 +71,26 @@ export {
   type ToolUsageStats,
   type ArchitectureSearchOptions,
 } from './architecture-search.js';
+
+export {
+  PromptOptimizer,
+  type MutationType as PromptMutationType,
+  type MutationRecord as PromptMutationRecord,
+  type OptimizationRound,
+  type PromptOptimizerOptions,
+} from './prompt-optimizer.js';
+
+export {
+  FewShotCurator,
+  type FewShotExample,
+  type FewShotCuratorOptions,
+} from './few-shot-curator.js';
+
+export {
+  RegressionDetector,
+  type PerformanceMetrics,
+  type PerformanceSnapshot,
+  type RegressionAlert,
+  type LearningCurvePoint as RegressionLearningCurvePoint,
+  type RegressionDetectorOptions,
+} from './regression-detector.js';

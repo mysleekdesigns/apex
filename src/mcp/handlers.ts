@@ -32,10 +32,17 @@ import { ArchitectureSearch } from '../evolution/architecture-search.js';
 import { ForesightEngine } from '../reflection/foresight.js';
 import { AgentPopulation } from '../evolution/multi-agent.js';
 import { ToolFactory } from '../evolution/tool-creation.js';
+import { PromptModuleRegistry } from './dynamic-descriptions.js';
+import { ABTestManager } from '../integration/ab-testing.js';
+import { PromptOptimizer } from '../evolution/prompt-optimizer.js';
+import { FewShotCurator } from '../evolution/few-shot-curator.js';
+import { RegressionDetector } from '../evolution/regression-detector.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
   RecallSchema,
+  PromptOptimizeSchema,
+  PromptModuleSchema,
   RecordSchema,
   ReflectGetSchema,
   ReflectStoreSchema,
@@ -109,6 +116,11 @@ let foresightEngine: ForesightEngine | null = null;
 let agentPopulation: AgentPopulation | null = null;
 let toolFactory: ToolFactory | null = null;
 let architectureSearch: ArchitectureSearch | null = null;
+let promptModuleRegistry: PromptModuleRegistry | null = null;
+let abTestManager: ABTestManager | null = null;
+let promptOptimizer: PromptOptimizer | null = null;
+let fewShotCurator: FewShotCurator | null = null;
+let regressionDetector: RegressionDetector | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -215,6 +227,47 @@ async function getOrCreateEffectivenessTracker(projectPath?: string): Promise<Ef
   await store.init();
   effectivenessTracker = new EffectivenessTracker(store);
   return effectivenessTracker;
+}
+
+async function getOrCreatePromptSubsystems(projectPath?: string): Promise<{
+  registry: PromptModuleRegistry;
+  abManager: ABTestManager;
+  optimizer: PromptOptimizer;
+  curator: FewShotCurator;
+  detector: RegressionDetector;
+}> {
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!promptModuleRegistry) {
+    promptModuleRegistry = new PromptModuleRegistry({ fileStore: store, logger });
+    await promptModuleRegistry.init();
+  }
+  if (!abTestManager) {
+    abTestManager = new ABTestManager({ fileStore: store, logger });
+    await abTestManager.init();
+  }
+  if (!promptOptimizer) {
+    promptOptimizer = new PromptOptimizer({ fileStore: store, logger });
+    await promptOptimizer.init();
+  }
+  if (!fewShotCurator) {
+    fewShotCurator = new FewShotCurator({ fileStore: store, logger });
+    await fewShotCurator.init();
+  }
+  if (!regressionDetector) {
+    regressionDetector = new RegressionDetector({ fileStore: store, logger });
+    await regressionDetector.init();
+  }
+
+  return {
+    registry: promptModuleRegistry,
+    abManager: abTestManager,
+    optimizer: promptOptimizer,
+    curator: fewShotCurator,
+    detector: regressionDetector,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,6 +1461,177 @@ async function handleArchSuggest(args: Record<string, unknown>): Promise<CallToo
   });
 }
 
+// ── 28. apex_prompt_optimize ──────────────────────────────────────
+
+async function handlePromptOptimize(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PromptOptimizeSchema, args);
+  if (!v.success) return v.error;
+  const { action } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_prompt_optimize');
+
+  const { registry, abManager, optimizer, detector } = await getOrCreatePromptSubsystems();
+
+  if (action === 'status') {
+    const modules = registry.listModules();
+    const experiments = abManager.getReport();
+    const mutationStats = optimizer.getMutationStats();
+    const regressionReport = detector.getReport();
+
+    return ok({
+      status: 'ok',
+      modules: modules.map((m) => ({
+        name: m.name,
+        category: m.category,
+        version: m.version,
+        metrics: m.metrics,
+        variantCount: m.variants.length,
+        activeVariant: m.activeVariantId,
+      })),
+      experiments,
+      mutationStats,
+      regressionReport,
+    });
+  }
+
+  if (action === 'conclude-experiments') {
+    const results = await abManager.autoEvaluate();
+    await abManager.persist();
+    return ok({
+      status: 'ok',
+      concluded: results.length,
+      results: results.map((r) => ({
+        experimentId: r.experimentId,
+        winner: r.winner,
+        significant: r.significant,
+        pValue: Math.round(r.pValue * 10000) / 10000,
+        liftPercent: Math.round(r.liftPercent * 100) / 100,
+      })),
+    });
+  }
+
+  // action === 'optimize'
+  const modules = registry.listModules();
+  const moduleInputs = modules.map((m) => ({
+    name: m.name,
+    content: registry.getActiveContent(m.name) ?? m.content,
+    metrics: {
+      successRate: m.metrics.successRate,
+      avgReward: m.metrics.avgReward,
+      exposures: m.metrics.totalExposures,
+    },
+  }));
+
+  const round = await optimizer.runOptimizationRound(moduleInputs);
+  const suggestions = optimizer.getSuggestions();
+
+  // Record performance snapshots for regression detection
+  for (const mod of modules) {
+    await detector.recordSnapshot({
+      moduleName: mod.name,
+      metrics: {
+        successRate: mod.metrics.successRate,
+        avgReward: mod.metrics.avgReward,
+        recallHitRate: mod.metrics.successRate, // proxy
+        avgLatency: 0,
+        sampleSize: mod.metrics.totalExposures,
+      },
+      changeDescription: `optimization round ${round.id}`,
+    });
+  }
+
+  await optimizer.persist();
+  await detector.persist();
+
+  return ok({
+    status: 'ok',
+    round: {
+      id: round.id,
+      mutationCount: round.mutations.length,
+      baselineScore: Math.round(round.baselineScore * 1000) / 1000,
+      mutations: round.mutations.map((m) => ({
+        moduleName: m.moduleName,
+        type: m.mutationType,
+        expectedImpact: Math.round(m.expectedImpact * 1000) / 1000,
+        preview: m.mutatedText.slice(0, 100) + (m.mutatedText.length > 100 ? '...' : ''),
+      })),
+    },
+    suggestions: suggestions.slice(0, 5),
+    regressionAlerts: detector.getAlerts({ severity: 'critical' }),
+  });
+}
+
+// ── 29. apex_prompt_module ───────────────────────────────────────
+
+async function handlePromptModule(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PromptModuleSchema, args);
+  if (!v.success) return v.error;
+  const { action, name, category, content, mutationType } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_prompt_module');
+
+  const { registry, curator } = await getOrCreatePromptSubsystems();
+
+  if (action === 'list') {
+    const modules = registry.listModules();
+    return ok({
+      status: 'ok',
+      count: modules.length,
+      modules: modules.map((m) => ({
+        name: m.name,
+        category: m.category,
+        version: m.version,
+        activeVariant: m.activeVariantId,
+        metrics: m.metrics,
+      })),
+    });
+  }
+
+  if (action === 'register') {
+    if (!name || !category || !content) {
+      return fail('register requires name, category, and content');
+    }
+    const mod = await registry.register({ name, category, content });
+    await registry.persist();
+    return ok({ status: 'ok', module: { id: mod.id, name: mod.name, category: mod.category, version: mod.version } });
+  }
+
+  if (action === 'get') {
+    if (!name) return fail('get requires name');
+    const activeContent = registry.getActiveContent(name);
+    const metrics = registry.getMetrics(name);
+    if (!activeContent) return fail(`module "${name}" not found`);
+    return ok({ status: 'ok', name, content: activeContent, metrics });
+  }
+
+  if (action === 'hot-swap') {
+    if (!name || !content) return fail('hot-swap requires name and content');
+    await registry.hotSwap(name, content);
+    await registry.persist();
+    return ok({ status: 'ok', message: `Module "${name}" hot-swapped successfully` });
+  }
+
+  if (action === 'add-variant') {
+    if (!name || !content) return fail('add-variant requires name and content');
+    const mt = mutationType ?? 'rephrase';
+    const variant = await registry.addVariant(name, content, mt);
+    await registry.persist();
+    return ok({ status: 'ok', variant: { id: variant.id, mutationType: variant.mutationType } });
+  }
+
+  if (action === 'examples') {
+    if (!name) return fail('examples requires name (tool name)');
+    const examples = curator.getExamplesForTool(name);
+    const formatted = curator.formatForInjection(name);
+    const stats = curator.getStats();
+    return ok({ status: 'ok', toolName: name, examples, formatted, stats });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -1438,4 +1662,6 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_arch_status', handleArchStatus],
   ['apex_arch_mutate', handleArchMutate],
   ['apex_arch_suggest', handleArchSuggest],
+  ['apex_prompt_optimize', handlePromptOptimize],
+  ['apex_prompt_module', handlePromptModule],
 ]);

@@ -656,10 +656,66 @@ export const tools: ToolDefinition[] = [
   {
     name: 'apex_arch_suggest',
     description:
-      'Get suggestions for config and prompt improvements based on performance data and tool usage patterns. Returns rollback recommendations if performance has degraded.',
+      'Get suggestions for config and prompt improvements based on performance data and tool usage patterns. Returns rollback recommendations if performance has degraded. Includes DSPy-inspired prompt optimization suggestions and regression alerts.',
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+
+  // ── 28. apex_prompt_optimize ──────────────────────────────────
+  {
+    name: 'apex_prompt_optimize',
+    description:
+      'Run a DSPy-inspired prompt optimization round. Analyses prompt module effectiveness metrics, proposes rule-based mutations (rephrase, simplify, elaborate, adjust-emphasis, add/remove examples), and manages A/B experiments. Returns mutation proposals ranked by expected impact.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['optimize', 'status', 'conclude-experiments'],
+          description:
+            'Action to perform. "optimize" runs a mutation round, "status" shows current experiments and module metrics, "conclude-experiments" evaluates and concludes significant A/B tests.',
+        },
+      },
+      required: ['action'],
+    },
+  },
+
+  // ── 29. apex_prompt_module ────────────────────────────────────
+  {
+    name: 'apex_prompt_module',
+    description:
+      'Manage prompt modules — modular prompt text units with versioning, A/B variants, and effectiveness tracking. Register new modules, hot-swap content, view metrics, and manage few-shot examples.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['register', 'list', 'get', 'hot-swap', 'add-variant', 'examples'],
+          description:
+            'Action to perform on prompt modules.',
+        },
+        name: {
+          type: 'string',
+          description: 'Module name (required for register, get, hot-swap, add-variant, examples).',
+        },
+        category: {
+          type: 'string',
+          enum: ['tool-description', 'behavior', 'few-shot'],
+          description: 'Module category (required for register).',
+        },
+        content: {
+          type: 'string',
+          description: 'Module content text (required for register, hot-swap, add-variant).',
+        },
+        mutationType: {
+          type: 'string',
+          enum: ['rephrase', 'add-example', 'remove-example', 'adjust-emphasis', 'simplify', 'elaborate'],
+          description: 'Mutation type for add-variant action.',
+        },
+      },
+      required: ['action'],
     },
   },
 ];
