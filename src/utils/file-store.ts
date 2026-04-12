@@ -2,6 +2,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 
 import { createHash, randomBytes } from 'crypto';
 import path from 'path';
 import { Logger } from './logger.js';
+import { LockManager } from './file-lock.js';
 
 const COLLECTIONS = ['episodes', 'memory', 'skills', 'reflections', 'metrics', 'snapshots'] as const;
 export type Collection = (typeof COLLECTIONS)[number];
@@ -21,6 +22,8 @@ export interface FileStoreOptions {
    * auto-restore on corruption. If omitted, snapshot restore is skipped.
    */
   dataPath?: string;
+  /** Lock manager instance. If omitted a new one is created. */
+  lockManager?: LockManager;
 }
 
 export class FileStore {
@@ -28,12 +31,19 @@ export class FileStore {
   private logger: Logger;
   private checksums: boolean;
   private dataPath: string | undefined;
+  private readonly locks: LockManager;
 
   constructor(basePath: string, options?: FileStoreOptions) {
     this.basePath = basePath;
     this.logger = options?.logger ?? new Logger({ prefix: 'apex:file-store' });
     this.checksums = options?.checksums ?? true;
     this.dataPath = options?.dataPath;
+    this.locks = options?.lockManager ?? new LockManager();
+  }
+
+  /** Get the base path of the file store. */
+  getBasePath(): string {
+    return this.basePath;
   }
 
   /** Create the .apex-data/ directory structure. */
@@ -82,14 +92,20 @@ export class FileStore {
 
   /** Write an item to a collection. Creates the collection directory if needed. */
   async write<T>(collection: string, id: string, data: T): Promise<void> {
-    const dirPath = path.join(this.basePath, collection);
-    await mkdir(dirPath, { recursive: true });
-    const filePath = path.join(dirPath, `${id}.json`);
+    const lockKey = `${collection}:${id}`;
+    const release = await this.locks.acquire(lockKey);
+    try {
+      const dirPath = path.join(this.basePath, collection);
+      await mkdir(dirPath, { recursive: true });
+      const filePath = path.join(dirPath, `${id}.json`);
 
-    // Create backup of existing file before overwriting
-    await this.createBackup(filePath);
+      // Create backup of existing file before overwriting
+      await this.createBackup(filePath);
 
-    await this.writeInternal(filePath, data);
+      await this.writeInternal(filePath, data);
+    } finally {
+      release();
+    }
   }
 
   /** List all IDs in a collection. */
@@ -107,21 +123,33 @@ export class FileStore {
 
   /** Delete an item from a collection (removes data, backup, and checksum files). */
   async delete(collection: string, id: string): Promise<void> {
-    const filePath = path.join(this.basePath, collection, `${id}.json`);
-    try { await rm(filePath); } catch { /* already gone */ }
-    try { await rm(`${filePath}.bak`); } catch { /* already gone */ }
-    try { await rm(`${filePath}.sha256`); } catch { /* already gone */ }
+    const lockKey = `${collection}:${id}`;
+    const release = await this.locks.acquire(lockKey);
+    try {
+      const filePath = path.join(this.basePath, collection, `${id}.json`);
+      try { await rm(filePath); } catch { /* already gone */ }
+      try { await rm(`${filePath}.bak`); } catch { /* already gone */ }
+      try { await rm(`${filePath}.sha256`); } catch { /* already gone */ }
+    } finally {
+      release();
+    }
   }
 
-  /** Read all items from a collection. */
+  /** Read all items from a collection. Acquires a collection-level lock. */
   async readAll<T>(collection: string): Promise<T[]> {
-    const ids = await this.list(collection);
-    const items: T[] = [];
-    for (const id of ids) {
-      const item = await this.read<T>(collection, id);
-      if (item !== null) items.push(item);
+    const lockKey = collection;
+    const release = await this.locks.acquire(lockKey);
+    try {
+      const ids = await this.list(collection);
+      const items: T[] = [];
+      for (const id of ids) {
+        const item = await this.read<T>(collection, id);
+        if (item !== null) items.push(item);
+      }
+      return items;
+    } finally {
+      release();
     }
-    return items;
   }
 
   // ---------------------------------------------------------------------------
