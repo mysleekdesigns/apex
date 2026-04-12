@@ -374,6 +374,31 @@ export const PromptModuleSchema = z.object({
 export type PromptModuleInput = z.infer<typeof PromptModuleSchema>;
 
 // ---------------------------------------------------------------------------
+// 30. apex_goals
+// ---------------------------------------------------------------------------
+
+export const GoalsSchema = z.object({
+  action: z.enum(['add', 'list', 'get', 'update', 'complete', 'block', 'abandon', 'search']),
+  goalId: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  parentId: z.string().min(1).optional(),
+  deadline: z.string().min(1).optional(),
+  context: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  query: z.string().min(1).optional(),
+  cascade: z.boolean().optional(),
+});
+export type GoalsInput = z.infer<typeof GoalsSchema>;
+
+// ---------------------------------------------------------------------------
+// 31. apex_cognitive_status
+// ---------------------------------------------------------------------------
+
+export const CognitiveStatusSchema = z.object({});
+export type CognitiveStatusInput = z.infer<typeof CognitiveStatusSchema>;
+
+// ---------------------------------------------------------------------------
 // Schema map — keyed by tool name for dynamic lookup
 // ---------------------------------------------------------------------------
 
@@ -407,4 +432,6 @@ export const schemaMap: Record<string, z.ZodSchema> = {
   apex_arch_suggest: ArchSuggestSchema,
   apex_prompt_optimize: PromptOptimizeSchema,
   apex_prompt_module: PromptModuleSchema,
+  apex_goals: GoalsSchema,
+  apex_cognitive_status: CognitiveStatusSchema,
 };

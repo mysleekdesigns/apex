@@ -718,4 +718,71 @@ export const tools: ToolDefinition[] = [
       required: ['action'],
     },
   },
+
+  // ── 30. apex_goals ────────────────────────────────────────────
+  {
+    name: 'apex_goals',
+    description:
+      'Manage the persistent goal hierarchy. Track multi-session objectives with sub-goals, priorities, deadlines, and progress. Goals persist across sessions and surface in planning context.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add', 'list', 'get', 'update', 'complete', 'block', 'abandon', 'search'],
+          description: 'Action to perform on the goal stack.',
+        },
+        goalId: {
+          type: 'string',
+          description: 'Goal ID (required for get, update, complete, block, abandon).',
+        },
+        description: {
+          type: 'string',
+          description: 'Goal description (required for add).',
+        },
+        priority: {
+          type: 'string',
+          enum: ['critical', 'high', 'medium', 'low'],
+          description: 'Goal priority (for add or update).',
+        },
+        parentId: {
+          type: 'string',
+          description: 'Parent goal ID to create a sub-goal (for add).',
+        },
+        deadline: {
+          type: 'string',
+          description: 'ISO timestamp deadline (for add or update).',
+        },
+        context: {
+          type: 'string',
+          description: 'Additional context/notes (for add or update).',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags for categorization (for add or update).',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query (for search action).',
+        },
+        cascade: {
+          type: 'boolean',
+          description: 'Cascade to sub-goals (for abandon action).',
+        },
+      },
+      required: ['action'],
+    },
+  },
+
+  // ── 31. apex_cognitive_status ─────────────────────────────────
+  {
+    name: 'apex_cognitive_status',
+    description:
+      'Show cognitive architecture status: current cognitive phase, cycle quality, ACT-R activation stats, goal stack summary, production rule stats, and phase-appropriate next-step suggestions.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];

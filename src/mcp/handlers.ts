@@ -37,6 +37,10 @@ import { ABTestManager } from '../integration/ab-testing.js';
 import { PromptOptimizer } from '../evolution/prompt-optimizer.js';
 import { FewShotCurator } from '../evolution/few-shot-curator.js';
 import { RegressionDetector } from '../evolution/regression-detector.js';
+import { ActivationEngine } from '../cognitive/activation.js';
+import { CognitiveCycle } from '../cognitive/cycle.js';
+import { GoalStack } from '../cognitive/goal-stack.js';
+import { ProductionRuleEngine } from '../cognitive/production-rules.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -69,6 +73,8 @@ import {
   ArchStatusSchema,
   ArchMutateSchema,
   ArchSuggestSchema,
+  GoalsSchema,
+  CognitiveStatusSchema,
 } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -121,6 +127,10 @@ let abTestManager: ABTestManager | null = null;
 let promptOptimizer: PromptOptimizer | null = null;
 let fewShotCurator: FewShotCurator | null = null;
 let regressionDetector: RegressionDetector | null = null;
+let activationEngine: ActivationEngine | null = null;
+let cognitiveCycle: CognitiveCycle | null = null;
+let goalStack: GoalStack | null = null;
+let productionRuleEngine: ProductionRuleEngine | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -267,6 +277,41 @@ async function getOrCreatePromptSubsystems(projectPath?: string): Promise<{
     optimizer: promptOptimizer,
     curator: fewShotCurator,
     detector: regressionDetector,
+  };
+}
+
+async function getOrCreateCognitiveSubsystems(projectPath?: string): Promise<{
+  activation: ActivationEngine;
+  cycle: CognitiveCycle;
+  goals: GoalStack;
+  rules: ProductionRuleEngine;
+}> {
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!activationEngine) {
+    activationEngine = new ActivationEngine({ fileStore: store, logger });
+    await activationEngine.init();
+  }
+  if (!cognitiveCycle) {
+    cognitiveCycle = new CognitiveCycle({ fileStore: store, logger });
+    await cognitiveCycle.init();
+  }
+  if (!goalStack) {
+    goalStack = new GoalStack({ fileStore: store, logger });
+    await goalStack.init();
+  }
+  if (!productionRuleEngine) {
+    productionRuleEngine = new ProductionRuleEngine({ fileStore: store, logger });
+    await productionRuleEngine.init();
+  }
+
+  return {
+    activation: activationEngine,
+    cycle: cognitiveCycle,
+    goals: goalStack,
+    rules: productionRuleEngine,
   };
 }
 
@@ -1632,6 +1677,111 @@ async function handlePromptModule(args: Record<string, unknown>): Promise<CallTo
   return fail(`unknown action: ${action}`);
 }
 
+// ── 30. apex_goals ───────────────────────────────────────────────
+
+async function handleGoals(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(GoalsSchema, args);
+  if (!v.success) return v.error;
+  const { action, goalId, description, priority, parentId, deadline, context, tags, query, cascade } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_goals');
+
+  const { goals } = await getOrCreateCognitiveSubsystems();
+
+  if (action === 'add') {
+    if (!description) return fail('add requires description');
+    const goal = await goals.addGoal({ description, priority, parentId, deadline, context, tags });
+    await goals.persist();
+    return ok({ status: 'ok', goal });
+  }
+
+  if (action === 'list') {
+    const summary = goals.getSummary();
+    return ok({ status: 'ok', summary });
+  }
+
+  if (action === 'get') {
+    if (!goalId) return fail('get requires goalId');
+    const goal = goals.getGoal(goalId);
+    if (!goal) return fail(`goal "${goalId}" not found`);
+    const subGoals = goals.getSubGoals(goalId);
+    return ok({ status: 'ok', goal, subGoals });
+  }
+
+  if (action === 'update') {
+    if (!goalId) return fail('update requires goalId');
+    const updates: Record<string, unknown> = {};
+    if (description !== undefined) updates.description = description;
+    if (priority !== undefined) updates.priority = priority;
+    if (deadline !== undefined) updates.deadline = deadline;
+    if (context !== undefined) updates.context = context;
+    if (tags !== undefined) updates.tags = tags;
+    const goal = await goals.updateGoal(goalId, updates);
+    if (!goal) return fail(`goal "${goalId}" not found`);
+    await goals.persist();
+    return ok({ status: 'ok', goal });
+  }
+
+  if (action === 'complete') {
+    if (!goalId) return fail('complete requires goalId');
+    const goal = await goals.completeGoal(goalId);
+    if (!goal) return fail(`goal "${goalId}" not found`);
+    await goals.persist();
+    return ok({ status: 'ok', goal });
+  }
+
+  if (action === 'block') {
+    if (!goalId) return fail('block requires goalId');
+    const goal = await goals.blockGoal(goalId, context);
+    if (!goal) return fail(`goal "${goalId}" not found`);
+    await goals.persist();
+    return ok({ status: 'ok', goal });
+  }
+
+  if (action === 'abandon') {
+    if (!goalId) return fail('abandon requires goalId');
+    const goal = await goals.abandonGoal(goalId, cascade);
+    if (!goal) return fail(`goal "${goalId}" not found`);
+    await goals.persist();
+    return ok({ status: 'ok', goal });
+  }
+
+  if (action === 'search') {
+    if (!query) return fail('search requires query');
+    const results = goals.searchGoals(query);
+    return ok({ status: 'ok', results });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
+// ── 31. apex_cognitive_status ────────────────────────────────────
+
+async function handleCognitiveStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(CognitiveStatusSchema, args);
+  if (!v.success) return v.error;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_cognitive_status');
+
+  const { activation, cycle, goals, rules } = await getOrCreateCognitiveSubsystems();
+
+  return ok({
+    status: 'ok',
+    cognitivePhase: {
+      current: cycle.getCurrentPhase(),
+      quality: Math.round(cycle.getCycleQuality() * 100) / 100,
+      metrics: cycle.getMetrics(),
+      context: cycle.getPhaseContext(),
+      suggestedNext: cycle.suggestNextPhase(),
+    },
+    activation: activation.getStats(),
+    goals: goals.getSummary(),
+    productionRules: rules.getStats(),
+  });
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -1664,4 +1814,6 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_arch_suggest', handleArchSuggest],
   ['apex_prompt_optimize', handlePromptOptimize],
   ['apex_prompt_module', handlePromptModule],
+  ['apex_goals', handleGoals],
+  ['apex_cognitive_status', handleCognitiveStatus],
 ]);
