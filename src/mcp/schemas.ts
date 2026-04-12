@@ -1,7 +1,7 @@
 /**
  * APEX MCP Input Validation Schemas
  *
- * Zod schemas for all 33 MCP tool handlers.
+ * Zod schemas for all 34 MCP tool handlers.
  * Each schema matches the JSON Schema `inputSchema` defined in tools.ts.
  */
 
@@ -424,6 +424,16 @@ export const SelfModifySchema = z.object({
 export type SelfModifyInput = z.infer<typeof SelfModifySchema>;
 
 // ---------------------------------------------------------------------------
+// 34. apex_telemetry
+// ---------------------------------------------------------------------------
+
+export const TelemetrySchema = z.object({
+  action: z.enum(['summary', 'events', 'episodes', 'rewards', 'flush']),
+  limit: z.number().optional(),
+});
+export type TelemetryInput = z.infer<typeof TelemetrySchema>;
+
+// ---------------------------------------------------------------------------
 // Schema map — keyed by tool name for dynamic lookup
 // ---------------------------------------------------------------------------
 
@@ -461,4 +471,5 @@ export const schemaMap: Record<string, z.ZodSchema> = {
   apex_cognitive_status: CognitiveStatusSchema,
   apex_self_benchmark: SelfBenchmarkSchema,
   apex_self_modify: SelfModifySchema,
+  apex_telemetry: TelemetrySchema,
 };

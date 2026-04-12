@@ -43,6 +43,9 @@ import { GoalStack } from '../cognitive/goal-stack.js';
 import { ProductionRuleEngine } from '../cognitive/production-rules.js';
 import { SelfBenchmark } from '../evolution/self-benchmark.js';
 import { SelfModifier } from '../evolution/self-modify.js';
+import { TelemetryCollector } from '../integration/telemetry.js';
+import { EpisodeDetector } from '../integration/episode-detector.js';
+import { ImplicitRewardEngine } from '../integration/implicit-rewards.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -79,6 +82,7 @@ import {
   CognitiveStatusSchema,
   SelfBenchmarkSchema,
   SelfModifySchema,
+  TelemetrySchema,
 } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -137,6 +141,9 @@ let goalStack: GoalStack | null = null;
 let productionRuleEngine: ProductionRuleEngine | null = null;
 let selfBenchmark: SelfBenchmark | null = null;
 let selfModifier: SelfModifier | null = null;
+let telemetryCollector: TelemetryCollector | null = null;
+let episodeDetector: EpisodeDetector | null = null;
+let implicitRewardEngine: ImplicitRewardEngine | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -1396,6 +1403,28 @@ async function getOrCreateArchitectureSearch(projectPath?: string): Promise<Arch
   return architectureSearch;
 }
 
+async function getOrCreateTelemetrySubsystems(projectPath?: string): Promise<{
+  telemetry: TelemetryCollector;
+  detector: EpisodeDetector;
+  rewards: ImplicitRewardEngine;
+}> {
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!telemetryCollector) {
+    telemetryCollector = new TelemetryCollector({ fileStore: store, logger });
+  }
+  if (!episodeDetector) {
+    episodeDetector = new EpisodeDetector({ logger });
+  }
+  if (!implicitRewardEngine) {
+    implicitRewardEngine = new ImplicitRewardEngine({ fileStore: store, logger });
+  }
+
+  return { telemetry: telemetryCollector, detector: episodeDetector, rewards: implicitRewardEngine };
+}
+
 async function handleArchStatus(args: Record<string, unknown>): Promise<CallToolResult> {
   const v = validateArgs(ArchStatusSchema, args);
   if (!v.success) return v.error;
@@ -1989,6 +2018,93 @@ async function handleSelfModify(args: Record<string, unknown>): Promise<CallTool
   return fail(`unknown action: ${action}`);
 }
 
+// ── 34. apex_telemetry ─────────────────────────────────────────────
+
+async function handleTelemetry(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TelemetrySchema, args);
+  if (!v.success) return v.error;
+  const { action, limit } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_telemetry');
+
+  const { telemetry, detector, rewards } = await getOrCreateTelemetrySubsystems();
+
+  if (action === 'summary') {
+    const summary = telemetry.getSummary();
+    return ok({
+      status: 'ok',
+      summary: {
+        sessionId: summary.sessionId,
+        durationMs: summary.durationMs,
+        totalEvents: summary.totalEvents,
+        toolSequence: summary.toolSequence.slice(-(limit ?? 20)),
+        errorsEncountered: summary.errorsEncountered,
+        peakCallRate: Math.round(summary.peakCallRate * 10) / 10,
+        toolStats: summary.toolStats.slice(0, limit ?? 10),
+      },
+    });
+  }
+
+  if (action === 'events') {
+    const events = telemetry.getRecentEvents(limit ?? 20);
+    return ok({
+      status: 'ok',
+      events: events.map((e) => ({
+        toolName: e.toolName,
+        success: e.success,
+        durationMs: e.durationMs,
+        timestamp: new Date(e.timestamp).toISOString(),
+        resultSummary: e.resultSummary,
+      })),
+    });
+  }
+
+  if (action === 'episodes') {
+    const events = telemetry.getRecentEvents();
+    const detected = detector.detect(events);
+    return ok({
+      status: 'ok',
+      detectedEpisodes: detected.slice(0, limit ?? 10).map((ep) => ({
+        id: ep.id,
+        rule: ep.ruleName,
+        task: ep.task,
+        success: ep.success,
+        confidence: Math.round(ep.confidence * 100) / 100,
+        eventCount: ep.events.length,
+        timestamp: new Date(ep.timestamp).toISOString(),
+      })),
+    });
+  }
+
+  if (action === 'rewards') {
+    const signals = rewards.getSignals();
+    const recent = signals.slice(-(limit ?? 20));
+    return ok({
+      status: 'ok',
+      rewards: [...recent].reverse().map((s) => ({
+        type: s.type,
+        source: s.source,
+        magnitude: s.magnitude,
+        toolName: s.toolName,
+        description: s.description,
+        timestamp: new Date(s.timestamp).toISOString(),
+      })),
+    });
+  }
+
+  if (action === 'flush') {
+    await telemetry.flush();
+    await rewards.flush(telemetry.getSummary().sessionId);
+    return ok({
+      status: 'ok',
+      message: 'Telemetry and reward signals flushed to disk.',
+    });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -2025,4 +2141,5 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_cognitive_status', handleCognitiveStatus],
   ['apex_self_benchmark', handleSelfBenchmark],
   ['apex_self_modify', handleSelfModify],
+  ['apex_telemetry', handleTelemetry],
 ]);

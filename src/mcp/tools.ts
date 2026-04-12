@@ -849,4 +849,26 @@ export const tools: ToolDefinition[] = [
       required: ['action'],
     },
   },
+
+  // ── 34. apex_telemetry ───────────────────────────────────────────
+  {
+    name: 'apex_telemetry',
+    description:
+      'View real-time learning signals: passive telemetry, detected episodes, implicit rewards, and session summaries. No manual recording required — purely observational.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['summary', 'events', 'episodes', 'rewards', 'flush'],
+          description: 'Action: "summary" shows session overview, "events" shows recent tool calls, "episodes" shows auto-detected episodes, "rewards" shows implicit reward signals, "flush" persists telemetry to disk.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of items to return (default: 20).',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];
