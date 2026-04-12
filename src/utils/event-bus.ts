@@ -6,6 +6,8 @@
 export type ApexEventType =
   | 'episode:recorded'
   | 'memory:consolidated'
+  | 'memory:bounds-warning'
+  | 'memory:bounds-eviction'
   | 'skill:learned'
   | 'skill:promoted'
   | 'snapshot:created';
