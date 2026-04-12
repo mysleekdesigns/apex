@@ -28,3 +28,31 @@ export {
   type ValueEstimate,
   type ValueEstimatorOptions,
 } from './value.js';
+export {
+  MCTSEngine,
+  type MCTSNode,
+  type MCTSOptions,
+  type MCTSResult,
+  type SimulationResult,
+} from './mcts.js';
+export {
+  LMValueFunction,
+  extractSimpleKeywords,
+  type LMValuePrompt,
+  type LMValueEvaluation,
+  type LMValueAccuracy,
+  type LMValueFunctionOptions,
+} from './lm-value.js';
+export {
+  AdaptiveExploration,
+  type DomainExplorationStats,
+  type ExplorationBalance,
+  type AdaptiveExplorationOptions,
+} from './adaptive-exploration.js';
+export {
+  TreePersistenceManager,
+  type SavedSubtree,
+  type TreeGrowthMetrics,
+  type CompactionResult,
+  type TreePersistenceOptions,
+} from './tree-persistence.js';

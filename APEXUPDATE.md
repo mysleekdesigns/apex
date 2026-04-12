@@ -2,8 +2,8 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~39,550 LOC TypeScript | 742 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking
-**Target State:** ~40,400 LOC | ~965 tests | 39+ MCP tools | 12 new frontier capabilities
+**Current State:** ~43,800 LOC TypeScript | 814 tests | 27 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence
+**Target State:** ~47,000 LOC | ~1,100 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
 
@@ -186,44 +186,52 @@
 
 ---
 
-### Phase 13: Enhanced MCTS Planning with LM Value Functions (~600 LOC, ~35 tests) [HIGH IMPACT]
+### Phase 13: Enhanced MCTS Planning with LM Value Functions (~2,478 LOC + 1,804 test LOC, 72 tests) [HIGH IMPACT] ✅ COMPLETED
 
 **Problem:** APEX's action tree is purely retrospective. LATS (ICML 2024) showed MCTS + LM value functions achieves SOTA on programming, QA, web navigation, and math simultaneously.
 
 **Research:** LATS (arxiv:2310.04406, ICML 2024) | Tree of Thoughts (Yao et al., 2023)
 
+**Completed:** 2026-04-12 | 814 tests passing | TypeScript clean
+
+**New modules:**
+- `src/planning/mcts.ts` (671 LOC) — Full MCTS engine: UCB1 selection, expansion with thresholds, simulation via historical outcomes + optional LM value functions, backpropagation, FileStore persistence
+- `src/planning/lm-value.ts` (570 LOC) — Structured prompt generation for Claude plan evaluation, Jaccard-based value cache with TTL/eviction, accuracy tracking (MAE, Pearson correlation, calibration buckets)
+- `src/planning/adaptive-exploration.ts` (380 LOC) — Per-domain learned exploration constants replacing fixed sqrt(2), exploration decay, over/under-exploration detection, domain-tuned ValueEstimator factory
+- `src/planning/tree-persistence.ts` (857 LOC) — Saves promising subtrees per task type, restores across sessions, advanced pruning (confidently bad branches), tree compaction (merge similar siblings), growth metrics tracking
+
 #### Forward-Looking Tree Search
-- [ ] Create `src/planning/mcts.ts` -- full MCTS implementation
-- [ ] Extend `src/planning/action-tree.ts` for prospective candidate generation
-- [ ] Selection: UCB1 with adaptive exploration constant
-- [ ] Expansion: generate candidate action sequences from current state
-- [ ] Simulation: lightweight rollout using historical action-outcome patterns
-- [ ] Backpropagation: update node values with real episode outcomes
+- [x] Create `src/planning/mcts.ts` -- full MCTS implementation
+- [x] Extend `src/planning/action-tree.ts` for prospective candidate generation
+- [x] Selection: UCB1 with adaptive exploration constant
+- [x] Expansion: generate candidate action sequences from current state
+- [x] Simulation: lightweight rollout using historical action-outcome patterns
+- [x] Backpropagation: update node values with real episode outcomes
 
 #### LM Value Function Interface
-- [ ] Design prompt templates for Claude to evaluate candidate plans (score 0-1)
-- [ ] Store LM evaluations as training signals over time
-- [ ] Implement value function cache (avoid re-evaluating similar plans)
-- [ ] Track LM value prediction accuracy vs actual outcomes
+- [x] Design prompt templates for Claude to evaluate candidate plans (score 0-1)
+- [x] Store LM evaluations as training signals over time
+- [x] Implement value function cache (avoid re-evaluating similar plans)
+- [x] Track LM value prediction accuracy vs actual outcomes
 
 #### Adaptive Exploration
-- [ ] Replace fixed UCB1 `c=sqrt(2)` with learned constant per task domain
-- [ ] Track exploration-exploitation balance: are we over-exploring known domains?
-- [ ] Implement exploration decay: reduce exploration as confidence increases
-- [ ] Modify `src/planning/value.ts` for adaptive constants
+- [x] Replace fixed UCB1 `c=sqrt(2)` with learned constant per task domain
+- [x] Track exploration-exploitation balance: are we over-exploring known domains?
+- [x] Implement exploration decay: reduce exploration as confidence increases
+- [x] Modify `src/planning/value.ts` for adaptive constants
 
 #### Tree Persistence & Pruning
-- [ ] Persist promising subtrees across sessions for recurring task types
-- [ ] Auto-prune branches: avgValue < 0.2 AND visits > 5 (confidently bad)
-- [ ] Implement tree compaction: merge similar nodes to reduce memory
-- [ ] Track tree growth metrics (depth, breadth, pruning rate)
+- [x] Persist promising subtrees across sessions for recurring task types
+- [x] Auto-prune branches: avgValue < 0.2 AND visits > 5 (confidently bad)
+- [x] Implement tree compaction: merge similar nodes to reduce memory
+- [x] Track tree growth metrics (depth, breadth, pruning rate)
 
 #### Tests
-- [ ] Unit tests for MCTS selection, expansion, simulation, backpropagation
-- [ ] Test adaptive exploration constant learning
-- [ ] Integration test: plan -> execute -> backpropagate -> improved plan
-- [ ] Test tree persistence across simulated sessions
-- [ ] Benchmark: planning quality vs baseline UCB1
+- [x] Unit tests for MCTS selection, expansion, simulation, backpropagation
+- [x] Test adaptive exploration constant learning
+- [x] Integration test: plan -> execute -> backpropagate -> improved plan
+- [x] Test tree persistence across simulated sessions
+- [x] Benchmark: planning quality vs baseline UCB1
 
 ---
 
@@ -523,21 +531,22 @@
 
 ## Summary
 
-| Wave | Phase | Description | LOC | Tests | Impact |
-|------|-------|-------------|-----|-------|--------|
+| Wave | Phase | Description | LOC | Tests | Impact | Status |
+|------|-------|-------------|-----|-------|--------|--------|
 | 1 | 11 | Semantic Vector Memory | ~800 | 89 | HIGH | ✅ DONE |
 | 1 | 21 | Benchmarking Framework | ~3,276 | 54 | HIGH | ✅ DONE |
 | 1 | 22 | Safety Hardening | ~4,024 | 202 | MEDIUM | ✅ DONE |
 | 2 | 12 | Verbal Reinforcement Learning | ~1,952 | 29 | HIGH | ✅ DONE |
-| 2 | 13 | Enhanced MCTS Planning | ~600 | ~35 | HIGH |
-| 2 | 14 | Prompt Auto-Optimization | ~500 | ~25 | HIGH |
-| 3 | 15 | Cognitive Architecture | ~700 | ~40 | MEDIUM |
-| 3 | 16 | Self-Improving Agent Loop | ~600 | ~30 | HIGH |
-| 3 | 20 | Real-Time Learning Signals | ~500 | ~30 | MEDIUM |
-| 4 | 17 | World Model / Causal Reasoning | ~500 | ~30 | MEDIUM |
-| 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM |
-| 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM |
-| | | **TOTAL** | **~6,900** | **~395** | |
+| 2 | 13 | Enhanced MCTS Planning | ~2,478 | 72 | HIGH | ✅ DONE |
+| 2 | 14 | Prompt Auto-Optimization | ~500 | ~25 | HIGH | |
+| 3 | 15 | Cognitive Architecture | ~700 | ~40 | MEDIUM | |
+| 3 | 16 | Self-Improving Agent Loop | ~600 | ~30 | HIGH | |
+| 3 | 20 | Real-Time Learning Signals | ~500 | ~30 | MEDIUM | |
+| 4 | 17 | World Model / Causal Reasoning | ~500 | ~30 | MEDIUM | |
+| 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM | |
+| 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM | |
+| | | **Completed** | **~12,530** | **446** | | **5/12** |
+| | | **Remaining** | **~4,000** | **~230** | | **7/12** |
 
 ## Key Research References
 
@@ -561,7 +570,7 @@
 1. Unit tests with >90% coverage on new modules
 2. Integration tests: end-to-end workflow (record -> learn -> recall -> improve)
 3. Benchmark comparison: before/after metrics
-4. Regression: all existing 369 tests must pass
+4. Regression: all existing 814 tests must pass
 5. Performance: recall <100ms at 10K entries, embedding <50ms
 
 **Per Wave:**
