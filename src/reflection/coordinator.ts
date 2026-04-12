@@ -14,6 +14,11 @@ import { MicroAssembler, type MicroReflectionData } from './micro.js';
 import { MesoAssembler, type MesoReflectionData } from './meso.js';
 import { MacroAssembler, type MacroReflectionData } from './macro.js';
 import { ReflectionStore, type ReflectionInput, type StoredReflection } from './store.js';
+import {
+  ReflectionQualityTracker,
+  type ReflectionQualityRecord,
+  type QualityReport,
+} from './quality-tracker.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,6 +58,12 @@ export interface ReflectionMetrics {
 
   /** Number of episodes that have not yet been reflected on. */
   unreflectedEpisodeCount: number;
+
+  /** Average quality score (if quality tracking data exists). */
+  avgQualityScore?: number;
+
+  /** Number of reflections pruned for low quality. */
+  prunedReflectionCount?: number;
 }
 
 /**
@@ -97,6 +108,7 @@ export class ReflectionCoordinator {
   private readonly store: ReflectionStore;
   private readonly fileStore: FileStore;
   private readonly logger: Logger;
+  private readonly qualityTracker: ReflectionQualityTracker;
 
   constructor(opts: ReflectionCoordinatorOptions) {
     this.fileStore = opts.fileStore;
@@ -106,6 +118,7 @@ export class ReflectionCoordinator {
     this.meso = new MesoAssembler({ fileStore: opts.fileStore, logger: this.logger });
     this.macro = new MacroAssembler({ fileStore: opts.fileStore, logger: this.logger });
     this.store = new ReflectionStore({ fileStore: opts.fileStore, semanticMemory: opts.semanticMemory, logger: this.logger });
+    this.qualityTracker = new ReflectionQualityTracker({ fileStore: opts.fileStore, logger: this.logger });
   }
 
   // -----------------------------------------------------------------------
@@ -226,6 +239,41 @@ export class ReflectionCoordinator {
   }
 
   // -----------------------------------------------------------------------
+  // Quality tracking
+  // -----------------------------------------------------------------------
+
+  /**
+   * Record that a reflection was applied and whether the subsequent episode
+   * succeeded. Delegates to the internal {@link ReflectionQualityTracker}.
+   *
+   * @param reflectionId - The reflection whose insights were applied.
+   * @param success      - Whether the subsequent episode succeeded.
+   */
+  async trackReflectionApplication(
+    reflectionId: string,
+    success: boolean,
+  ): Promise<ReflectionQualityRecord> {
+    return this.qualityTracker.recordApplication(reflectionId, success);
+  }
+
+  /**
+   * Generate a comprehensive quality report across all tracked reflections.
+   * Delegates to the internal {@link ReflectionQualityTracker}.
+   */
+  async getQualityReport(): Promise<QualityReport> {
+    return this.qualityTracker.getReport();
+  }
+
+  /**
+   * Run quality maintenance: auto-prune low-quality reflections and
+   * auto-flag high-quality reflections for promotion.
+   * Delegates to the internal {@link ReflectionQualityTracker}.
+   */
+  async runQualityMaintenance(): Promise<{ pruned: string[]; promoted: string[] }> {
+    return this.qualityTracker.runMaintenance();
+  }
+
+  // -----------------------------------------------------------------------
   // Metrics
   // -----------------------------------------------------------------------
 
@@ -249,7 +297,7 @@ export class ReflectionCoordinator {
       0,
     );
 
-    return {
+    const result: ReflectionMetrics = {
       totalReflections,
       byLevel: {
         micro: micro.length,
@@ -262,5 +310,15 @@ export class ReflectionCoordinator {
       reflectedEpisodeCount: reflectedIds.size,
       unreflectedEpisodeCount: allEpisodes.length - reflectedIds.size,
     };
+
+    // Augment with quality tracking data if available
+    const qualityRecords = await this.qualityTracker.getAllRecords();
+    if (qualityRecords.length > 0) {
+      result.avgQualityScore =
+        qualityRecords.reduce((sum, r) => sum + r.qualityScore, 0) / qualityRecords.length;
+      result.prunedReflectionCount = qualityRecords.filter((r) => r.pruned).length;
+    }
+
+    return result;
   }
 }

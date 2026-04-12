@@ -41,6 +41,9 @@ export interface PlanContext {
   /** Actionable insights from stored reflections. */
   relevantInsights: string[];
 
+  /** Verbal reflection lessons injected from past reflections. */
+  lessonsLearned: LessonLearned[];
+
   /**
    * Best past approach description if one exists (from the highest-ranked
    * successful episode), or `null` on cold start.
@@ -75,6 +78,20 @@ export interface Pitfall {
   frequency: number;
   /** Timestamp of the most recent occurrence. */
   lastSeen: number;
+}
+
+/** A verbal reflection lesson relevant to the current task. */
+export interface LessonLearned {
+  /** The lesson text (natural language). */
+  lesson: string;
+  /** How relevant this lesson is to the current task (0-1). */
+  relevance: number;
+  /** The reflection level it came from (micro/meso/macro). */
+  level: string;
+  /** When the lesson was learned. */
+  timestamp: number;
+  /** Source reflection ID. */
+  reflectionId: string;
 }
 
 /** A skill from procedural memory that may help with the task. */
@@ -114,6 +131,9 @@ const MAX_SKILLS = 5;
 
 /** Maximum number of reflections to scan. */
 const MAX_REFLECTIONS = 50;
+
+/** Maximum number of verbal reflection lessons to inject. */
+const MAX_LESSONS = 5;
 
 /** Half-life for recency decay in milliseconds (7 days). */
 const RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -214,6 +234,9 @@ export class PlanContextBuilder {
     // Surface relevant insights from reflections
     const relevantInsights = this.extractInsights(reflections, taskKeywords);
 
+    // Extract typed lesson objects from verbal reflections
+    const lessonsLearned = this.extractLessons(reflections, taskKeywords, taskSimhash);
+
     // Determine suggested approach from highest-ranked successful episode
     const bestSuccess = ranked.find(({ episode }) => episode.outcome.success);
     const suggestedApproach = bestSuccess
@@ -221,7 +244,11 @@ export class PlanContextBuilder {
       : null;
 
     // Compute overall confidence based on amount of relevant data
-    const confidence = this.computeConfidence(relevant.length, applicableSkills.length);
+    const confidence = this.computeConfidence(
+      relevant.length,
+      applicableSkills.length,
+      lessonsLearned.length,
+    );
 
     const context: PlanContext = {
       task,
@@ -229,6 +256,7 @@ export class PlanContextBuilder {
       knownPitfalls,
       applicableSkills,
       relevantInsights,
+      lessonsLearned,
       suggestedApproach,
       confidence,
     };
@@ -238,6 +266,7 @@ export class PlanContextBuilder {
       pitfalls: knownPitfalls.length,
       skills: applicableSkills.length,
       insights: relevantInsights.length,
+      lessons: lessonsLearned.length,
       confidence,
     });
 
@@ -395,6 +424,52 @@ export class PlanContextBuilder {
   }
 
   /**
+   * Extract typed lesson objects from verbal reflections.
+   *
+   * Uses `combinedSimilarity` to score each reflection against the task,
+   * then extracts individual `actionableInsights` as `LessonLearned` entries.
+   * Results are sorted by relevance and capped at `MAX_LESSONS`.
+   */
+  private extractLessons(
+    reflections: Reflection[],
+    taskKeywords: string[],
+    taskSimhash: bigint,
+  ): LessonLearned[] {
+    const taskInput = { keywords: taskKeywords, simhash: taskSimhash };
+    const lessons: LessonLearned[] = [];
+
+    for (const reflection of reflections) {
+      const refKeywords = extractKeywords(reflection.content);
+      const refSimhash = simHash(reflection.content);
+      const relevance = combinedSimilarity(taskInput, {
+        keywords: refKeywords,
+        simhash: refSimhash,
+      });
+
+      if (relevance < SIMILARITY_THRESHOLD) continue;
+
+      for (const insight of reflection.actionableInsights) {
+        lessons.push({
+          lesson: insight,
+          relevance,
+          level: reflection.level,
+          timestamp: reflection.timestamp,
+          reflectionId: reflection.id,
+        });
+      }
+    }
+
+    // Sort by relevance descending, then by recency
+    lessons.sort((a, b) => {
+      const relDiff = b.relevance - a.relevance;
+      if (relDiff !== 0) return relDiff;
+      return b.timestamp - a.timestamp;
+    });
+
+    return lessons.slice(0, MAX_LESSONS);
+  }
+
+  /**
    * Summarize the approach taken in a successful episode.
    *
    * Produces a concise description of the actions taken and the outcome.
@@ -428,6 +503,7 @@ export class PlanContextBuilder {
   private computeConfidence(
     relevantEpisodeCount: number,
     applicableSkillCount: number,
+    lessonCount: number = 0,
   ): number {
     // Episode contribution: logarithmic scale, saturates around RICH_HISTORY_THRESHOLD
     const episodeScore = Math.min(
@@ -438,6 +514,9 @@ export class PlanContextBuilder {
     // Skill contribution: up to 0.2 bonus for having applicable skills
     const skillBonus = Math.min(0.2, applicableSkillCount * 0.05);
 
-    return Math.min(1, episodeScore + skillBonus);
+    // Lesson contribution: small boost if we have reflected on similar work
+    const lessonBonus = lessonCount > 0 ? 0.1 : 0;
+
+    return Math.min(1, episodeScore + skillBonus + lessonBonus);
   }
 }
