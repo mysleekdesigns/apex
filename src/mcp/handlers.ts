@@ -33,6 +33,36 @@ import { ForesightEngine } from '../reflection/foresight.js';
 import { AgentPopulation } from '../evolution/multi-agent.js';
 import { ToolFactory } from '../evolution/tool-creation.js';
 import type { ToolDefinitionApex } from '../types.js';
+import {
+  validateArgs,
+  RecallSchema,
+  RecordSchema,
+  ReflectGetSchema,
+  ReflectStoreSchema,
+  PlanContextSchema,
+  SkillsSchema,
+  SkillStoreSchema,
+  StatusSchema,
+  ConsolidateSchema,
+  CurriculumSchema,
+  SetupSchema,
+  SnapshotSchema,
+  RollbackSchema,
+  PromoteSchema,
+  ImportSchema,
+  ForesightPredictSchema,
+  ForesightCheckSchema,
+  ForesightResolveSchema,
+  PopulationStatusSchema,
+  PopulationEvolveSchema,
+  ToolProposeSchema,
+  ToolVerifySchema,
+  ToolListSchema,
+  ToolComposeSchema,
+  ArchStatusSchema,
+  ArchMutateSchema,
+  ArchSuggestSchema,
+} from './schemas.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -192,13 +222,14 @@ async function getOrCreateEffectivenessTracker(projectPath?: string): Promise<Ef
 // ---------------------------------------------------------------------------
 
 async function handleRecall(args: Record<string, unknown>): Promise<CallToolResult> {
-  const query = args.query as string;
-  if (!query) return fail('Missing required parameter: query');
+  const v = validateArgs(RecallSchema, args);
+  if (!v.success) return v.error;
+  const { query, limit: rawLimit } = v.data;
 
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_recall');
 
-  const limit = (args.limit as number) ?? 10;
+  const limit = rawLimit ?? 10;
   const mgr = await getOrCreateManager();
   const results = await mgr.recall(query, limit);
 
@@ -220,24 +251,12 @@ async function handleRecall(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleRecord(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(RecordSchema, args);
+  if (!v.success) return v.error;
+  const { task, actions: rawActions, outcome: rawOutcome, reward: rawReward } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_record');
-
-  const task = args.task as string;
-  if (!task) return fail('Missing required parameter: task');
-
-  const rawActions = (args.actions ?? []) as Array<{
-    type: string;
-    description: string;
-    success: boolean;
-  }>;
-  const rawOutcome = args.outcome as {
-    success: boolean;
-    description: string;
-    errorType?: string;
-    duration: number;
-  };
-  if (!rawOutcome) return fail('Missing required parameter: outcome');
 
   const now = Date.now();
   const actions: Action[] = rawActions.map((a) => ({
@@ -254,7 +273,7 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
     duration: rawOutcome.duration,
   };
 
-  const reward = (args.reward as number) ?? (outcome.success ? 1.0 : 0.0);
+  const reward = rawReward ?? (outcome.success ? 1.0 : 0.0);
 
   const episode: Episode = {
     id: generateId(),
@@ -263,7 +282,7 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
     outcome,
     reward,
     timestamp: now,
-    sourceFiles: (args.sourceFiles as string[]) ?? undefined,
+    sourceFiles: undefined,
   };
 
   const mgr = await getOrCreateManager();
@@ -286,31 +305,50 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleReflectGet(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ReflectGetSchema, args);
+  if (!v.success) return v.error;
+  const { scope, episodeIds, taskType, limit: rawLimit } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_reflect_get');
 
-  const level = args.level as string;
   const coordinator = await getOrCreateReflectionCoordinator();
 
-  if (level === 'micro') {
-    const episodeId = args.episodeId as string;
-    if (!episodeId) return fail('Missing required parameter: episodeId (for micro-level reflection)');
-    const data = await coordinator.getMicroData(episodeId);
-    return ok({ status: 'ok', ...data });
+  if (scope === 'recent') {
+    const limit = rawLimit ?? 20;
+    // Use first episodeId if provided, otherwise return metrics
+    const episodeId = episodeIds?.[0];
+    if (episodeId) {
+      const data = await coordinator.getMicroData(episodeId);
+      return ok({ status: 'ok', ...data });
+    }
+    // Fallback: return metrics and unreflected episode count
+    const metrics = await coordinator.metrics();
+    const unreflected = await coordinator.getUnreflectedEpisodes();
+    return ok({
+      status: 'ok',
+      metrics,
+      unreflectedEpisodeCount: unreflected.length,
+      hint: 'Provide episodeIds for detailed micro-level data, or use scope "similar" with taskType for meso-level data.',
+    });
   }
 
-  if (level === 'meso') {
-    const taskQuery = args.taskQuery as string;
-    if (!taskQuery) return fail('Missing required parameter: taskQuery (for meso-level reflection)');
-    const limit = (args.limit as number) ?? 20;
-    const data = await coordinator.getMesoData(taskQuery, limit);
-    return ok({ status: 'ok', ...data });
+  if (scope === 'similar') {
+    const limit = rawLimit ?? 20;
+    if (taskType) {
+      const data = await coordinator.getMesoData(taskType, limit);
+      return ok({ status: 'ok', ...data });
+    }
+    const metrics = await coordinator.metrics();
+    return ok({
+      status: 'ok',
+      metrics,
+      hint: 'Provide taskType to filter by similar tasks.',
+    });
   }
 
-  if (level === 'macro') {
-    const errorTypes = (args.errorTypes as string[]) ?? undefined;
-    const limitPerCluster = (args.limitPerCluster as number) ?? undefined;
-    const data = await coordinator.getMacroData(errorTypes, limitPerCluster);
+  if (scope === 'errors') {
+    const data = await coordinator.getMacroData(undefined, undefined);
     return ok({ status: 'ok', ...data });
   }
 
@@ -321,27 +359,27 @@ async function handleReflectGet(args: Record<string, unknown>): Promise<CallTool
     status: 'ok',
     metrics,
     unreflectedEpisodeCount: unreflected.length,
-    hint: 'Specify level: "micro" (+ episodeId), "meso" (+ taskQuery), or "macro" (+ optional errorTypes) for structured reflection data.',
+    hint: 'Use scope: "recent", "similar" (+ taskType), or "errors" for structured reflection data.',
   });
 }
 
 async function handleReflectStore(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ReflectStoreSchema, args);
+  if (!v.success) return v.error;
+  const { level, content, errorTypes, actionableInsights, sourceEpisodes } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_reflect_store');
-
-  const level = args.level as 'micro' | 'meso' | 'macro';
-  const content = args.content as string;
-  if (!level || !content) return fail('Missing required parameters: level, content');
 
   const coordinator = await getOrCreateReflectionCoordinator();
 
   const result = await coordinator.storeReflection({
     level,
     content,
-    errorTypes: (args.errorTypes as string[]) ?? undefined,
-    actionableInsights: (args.actionableInsights as string[]) ?? undefined,
-    sourceEpisodes: (args.sourceEpisodes as string[]) ?? undefined,
-    confidence: (args.confidence as number) ?? undefined,
+    errorTypes: errorTypes ?? undefined,
+    actionableInsights: actionableInsights ?? undefined,
+    sourceEpisodes: sourceEpisodes ?? undefined,
+    confidence: undefined,
   });
 
   return ok({
@@ -356,11 +394,12 @@ async function handleReflectStore(args: Record<string, unknown>): Promise<CallTo
 }
 
 async function handlePlanContext(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PlanContextSchema, args);
+  if (!v.success) return v.error;
+  const { task } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_plan_context');
-
-  const task = args.task as string;
-  if (!task) return fail('Missing required parameter: task');
 
   const { contextBuilder, tree, estimator } = await getOrCreatePlanningSubsystems();
   const context = await contextBuilder.getContext(task);
@@ -406,19 +445,23 @@ async function handlePlanContext(args: Record<string, unknown>): Promise<CallToo
 }
 
 async function handleSkills(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SkillsSchema, args);
+  if (!v.success) return v.error;
+  const { query, action: rawAction, limit: rawLimit } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_skills');
 
-  const action = (args.action as string) ?? 'list';
-  const limit = (args.limit as number) ?? 20;
+  const action = rawAction ?? 'list';
+  const limit = rawLimit ?? 20;
   const mgr = await getOrCreateManager();
 
-  if (action === 'search' && args.query) {
-    const results = await mgr.searchSkills(args.query as string, limit);
+  if (action === 'search' && query) {
+    const results = await mgr.searchSkills(query, limit);
     return ok({
       status: 'ok',
       action: 'search',
-      query: args.query,
+      query,
       resultCount: results.length,
       skills: results.map((r) => ({
         id: r.skill.id,
@@ -452,23 +495,20 @@ async function handleSkills(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function handleSkillStore(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SkillStoreSchema, args);
+  if (!v.success) return v.error;
+  const { name, description, pattern, preconditions, tags } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_skill_store');
-
-  const name = args.name as string;
-  const description = args.description as string;
-  const pattern = args.pattern as string;
-  if (!name || !description || !pattern) {
-    return fail('Missing required parameters: name, description, pattern');
-  }
 
   const mgr = await getOrCreateManager();
   const skill = await mgr.addSkill({
     name,
     description,
     pattern,
-    preconditions: (args.preconditions as string[]) ?? [],
-    tags: (args.tags as string[]) ?? [],
+    preconditions: preconditions ?? [],
+    tags: tags ?? [],
     sourceProject: process.cwd(),
     sourceFiles: [],
   });
@@ -481,7 +521,10 @@ async function handleSkillStore(args: Record<string, unknown>): Promise<CallTool
   });
 }
 
-async function handleStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(StatusSchema, args);
+  if (!v.success) return v.error;
+
   try {
     const tracker = await getOrCreateEffectivenessTracker();
     tracker.recordToolCall('apex_status');
@@ -571,7 +614,10 @@ async function handleStatus(_args: Record<string, unknown>): Promise<CallToolRes
   }
 }
 
-async function handleConsolidate(_args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleConsolidate(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ConsolidateSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_consolidate');
 
@@ -591,10 +637,14 @@ async function handleConsolidate(_args: Record<string, unknown>): Promise<CallTo
 }
 
 async function handleCurriculum(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(CurriculumSchema, args);
+  if (!v.success) return v.error;
+  const { domain } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_curriculum');
 
-  const root = (args.projectPath as string) ?? process.cwd();
+  const root = process.cwd();
   const mgr = await getOrCreateManager(root);
 
   const store = new FileStore(getProjectDataPath(root));
@@ -608,8 +658,8 @@ async function handleCurriculum(args: Record<string, unknown>): Promise<CallTool
   const skills = await mgr.listSkills();
 
   const suggestions = curriculumGenerator.suggest(episodes, skills, {
-    domain: args.domain as string | undefined,
-    count: (args.count as number) ?? 3,
+    domain,
+    count: 3,
   });
 
   return ok({
@@ -619,10 +669,13 @@ async function handleCurriculum(args: Record<string, unknown>): Promise<CallTool
 }
 
 async function handleSetup(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SetupSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_setup');
 
-  const projectPath = (args.projectPath as string) ?? process.cwd();
+  const projectPath = v.data.projectPath ?? process.cwd();
   const dataPath = getProjectDataPath(projectPath);
   const globalPath = getGlobalDataPath();
 
@@ -687,11 +740,14 @@ async function handleSetup(args: Record<string, unknown>): Promise<CallToolResul
 }
 
 async function handleSnapshot(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(SnapshotSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_snapshot');
 
   const mgr = await getOrCreateManager();
-  const name = args.name as string | undefined;
+  const name = v.data.name;
   const snapshot = await mgr.createSnapshot(name);
 
   return ok({
@@ -704,11 +760,15 @@ async function handleSnapshot(args: Record<string, unknown>): Promise<CallToolRe
 }
 
 async function handleRollback(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(RollbackSchema, args);
+  if (!v.success) return v.error;
+  const { snapshotId: rawSnapshotId, latest } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_rollback');
 
   const mgr = await getOrCreateManager();
-  const snapshotId = args.latest ? 'latest' : (args.snapshotId as string);
+  const snapshotId = latest ? 'latest' : rawSnapshotId;
   if (!snapshotId) return fail('Provide snapshotId or set latest: true');
 
   const snapshot = await mgr.rollback(snapshotId);
@@ -723,11 +783,12 @@ async function handleRollback(args: Record<string, unknown>): Promise<CallToolRe
 }
 
 async function handlePromote(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PromoteSchema, args);
+  if (!v.success) return v.error;
+  const { skillId } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_promote');
-
-  const skillId = args.skillId as string;
-  if (!skillId) return fail('Missing required parameter: skillId');
 
   const root = process.cwd();
   const projectStore = new FileStore(getProjectDataPath(root));
@@ -762,17 +823,18 @@ async function handlePromote(args: Record<string, unknown>): Promise<CallToolRes
 }
 
 async function handleImport(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ImportSchema, args);
+  if (!v.success) return v.error;
+  const { source } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_import');
-
-  const source = args.source as string;
-  if (!source) return fail('Missing required parameter: source');
 
   const root = process.cwd();
   const targetStore = new FileStore(getProjectDataPath(root));
   await targetStore.init();
 
-  const strategy = (args.strategy as 'skip-duplicates' | 'overwrite' | 'keep-higher-confidence') ?? 'skip-duplicates';
+  const strategy = 'skip-duplicates' as const;
 
   // Check if source is a JSON bundle file or a project path
   const sourcePath = path.resolve(source);
@@ -822,16 +884,12 @@ async function getOrCreateForesightEngine(projectPath?: string): Promise<Foresig
 }
 
 async function handleForesightPredict(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ForesightPredictSchema, args);
+  if (!v.success) return v.error;
+  const { taskId, predictedSuccess, expectedDuration, expectedSteps, riskFactors, confidence } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_foresight_predict');
-
-  const taskId = args.taskId as string;
-  const predictedSuccess = args.predictedSuccess as boolean;
-  const expectedDuration = args.expectedDuration as number;
-  const expectedSteps = args.expectedSteps as number;
-  if (!taskId || predictedSuccess === undefined || !expectedDuration || !expectedSteps) {
-    return fail('Missing required parameters: taskId, predictedSuccess, expectedDuration, expectedSteps');
-  }
 
   const engine = await getOrCreateForesightEngine();
   const prediction = await engine.predict({
@@ -839,8 +897,8 @@ async function handleForesightPredict(args: Record<string, unknown>): Promise<Ca
     predictedSuccess,
     expectedDuration,
     expectedSteps,
-    riskFactors: (args.riskFactors as string[]) ?? [],
-    confidence: (args.confidence as number) ?? 0.5,
+    riskFactors: riskFactors ?? [],
+    confidence: confidence ?? 0.5,
   });
 
   return ok({
@@ -854,17 +912,12 @@ async function handleForesightPredict(args: Record<string, unknown>): Promise<Ca
 }
 
 async function handleForesightCheck(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ForesightCheckSchema, args);
+  if (!v.success) return v.error;
+  const { predictionId, stepIndex, stepSuccess, elapsedMs, completedSteps, stepDescription } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_foresight_check');
-
-  const predictionId = args.predictionId as string;
-  const stepIndex = args.stepIndex as number;
-  const stepSuccess = args.stepSuccess as boolean;
-  const elapsedMs = args.elapsedMs as number;
-  const completedSteps = args.completedSteps as number;
-  if (!predictionId || stepIndex === undefined || stepSuccess === undefined || !elapsedMs || !completedSteps) {
-    return fail('Missing required parameters: predictionId, stepIndex, stepSuccess, elapsedMs, completedSteps');
-  }
 
   const engine = await getOrCreateForesightEngine();
 
@@ -875,7 +928,7 @@ async function handleForesightCheck(args: Record<string, unknown>): Promise<Call
       stepSuccess,
       elapsedMs,
       completedSteps,
-      stepDescription: (args.stepDescription as string) ?? undefined,
+      stepDescription: stepDescription ?? undefined,
     });
 
     return ok({
@@ -892,19 +945,12 @@ async function handleForesightCheck(args: Record<string, unknown>): Promise<Call
 }
 
 async function handleForesightResolve(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ForesightResolveSchema, args);
+  if (!v.success) return v.error;
+  const { predictionId, actualOutcome, episodeId } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_foresight_resolve');
-
-  const predictionId = args.predictionId as string;
-  const rawOutcome = args.actualOutcome as {
-    success: boolean;
-    description: string;
-    errorType?: string;
-    duration: number;
-  };
-  if (!predictionId || !rawOutcome) {
-    return fail('Missing required parameters: predictionId, actualOutcome');
-  }
 
   const engine = await getOrCreateForesightEngine();
 
@@ -912,12 +958,12 @@ async function handleForesightResolve(args: Record<string, unknown>): Promise<Ca
     const result = await engine.resolve({
       predictionId,
       actualOutcome: {
-        success: rawOutcome.success,
-        description: rawOutcome.description,
-        errorType: rawOutcome.errorType,
-        duration: rawOutcome.duration,
+        success: actualOutcome.success,
+        description: actualOutcome.description,
+        errorType: actualOutcome.errorType,
+        duration: actualOutcome.duration,
       },
-      episodeId: (args.episodeId as string) ?? undefined,
+      episodeId: episodeId ?? undefined,
     });
 
     return ok({
@@ -954,7 +1000,10 @@ async function getOrCreatePopulation(projectPath?: string): Promise<AgentPopulat
   return agentPopulation;
 }
 
-async function handlePopulationStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+async function handlePopulationStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PopulationStatusSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_population_status');
 
@@ -974,17 +1023,17 @@ async function handlePopulationStatus(_args: Record<string, unknown>): Promise<C
 }
 
 async function handlePopulationEvolve(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(PopulationEvolveSchema, args);
+  if (!v.success) return v.error;
+  const { taskId, taskDomain, taskReward, taskSuccess } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_population_evolve');
 
   const pop = await getOrCreatePopulation();
 
   // If task details are provided, run a competitive evaluation first
-  const taskId = args.taskId as string | undefined;
   if (taskId) {
-    const taskDomain = args.taskDomain as string;
-    const taskReward = args.taskReward as number;
-    const taskSuccess = args.taskSuccess as boolean;
     if (!taskDomain || taskReward === undefined || taskSuccess === undefined) {
       return fail('When taskId is provided, taskDomain, taskReward, and taskSuccess are also required');
     }
@@ -1028,6 +1077,10 @@ async function getOrCreateToolFactory(projectPath?: string): Promise<ToolFactory
 }
 
 async function handleToolPropose(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ToolProposeSchema, args);
+  if (!v.success) return v.error;
+  const { minFrequency, minSuccessRate } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_tool_propose');
 
@@ -1046,10 +1099,6 @@ async function handleToolPropose(args: Record<string, unknown>): Promise<CallToo
       message: 'No episodes found. Record some episodes first with apex_record.',
     });
   }
-
-  // Allow overriding thresholds per-call
-  const minFrequency = (args.minFrequency as number) ?? undefined;
-  const minSuccessRate = (args.minSuccessRate as number) ?? undefined;
 
   // Create a temporary factory with custom thresholds if provided
   let factoryToUse = factory;
@@ -1088,11 +1137,12 @@ async function handleToolPropose(args: Record<string, unknown>): Promise<CallToo
 }
 
 async function handleToolVerify(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ToolVerifySchema, args);
+  if (!v.success) return v.error;
+  const { toolId } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_tool_verify');
-
-  const toolId = args.toolId as string;
-  if (!toolId) return fail('Missing required parameter: toolId');
 
   const factory = await getOrCreateToolFactory();
   const tool = await factory.loadTool(toolId);
@@ -1115,11 +1165,14 @@ async function handleToolVerify(args: Record<string, unknown>): Promise<CallTool
 }
 
 async function handleToolList(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ToolListSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_tool_list');
 
   const factory = await getOrCreateToolFactory();
-  const status = args.status as ToolDefinitionApex['verificationStatus'] | undefined;
+  const status = v.data.status as ToolDefinitionApex['verificationStatus'] | undefined;
   const tools = await factory.listTools(status);
   const compositions = await factory.listCompositions();
 
@@ -1153,6 +1206,10 @@ async function handleToolList(args: Record<string, unknown>): Promise<CallToolRe
 }
 
 async function handleToolCompose(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ToolComposeSchema, args);
+  if (!v.success) return v.error;
+  const { toolIds: requestedIds } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_tool_compose');
 
@@ -1172,9 +1229,6 @@ async function handleToolCompose(args: Record<string, unknown>): Promise<CallToo
       message: 'Need at least 2 verified tools to detect compositions. Verify more tools first.',
     });
   }
-
-  // If specific tool IDs provided, filter to those
-  const requestedIds = args.toolIds as string[] | undefined;
   const toolsToCompose = requestedIds
     ? tools.filter((t) => requestedIds.includes(t.id))
     : tools;
@@ -1220,7 +1274,10 @@ async function getOrCreateArchitectureSearch(projectPath?: string): Promise<Arch
   return architectureSearch;
 }
 
-async function handleArchStatus(_args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleArchStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ArchStatusSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_arch_status');
 
@@ -1263,12 +1320,15 @@ async function handleArchStatus(_args: Record<string, unknown>): Promise<CallToo
 }
 
 async function handleArchMutate(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ArchMutateSchema, args);
+  if (!v.success) return v.error;
+  const { mutationType, biased: rawBiased } = v.data;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_arch_mutate');
 
   const search = await getOrCreateArchitectureSearch();
-  const biased = (args.biased as boolean) ?? false;
-  const mutationType = args.mutationType as string | undefined;
+  const biased = rawBiased ?? false;
 
   const result = biased
     ? search.sampleBiased()
@@ -1300,7 +1360,10 @@ async function handleArchMutate(args: Record<string, unknown>): Promise<CallTool
   });
 }
 
-async function handleArchSuggest(_args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleArchSuggest(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(ArchSuggestSchema, args);
+  if (!v.success) return v.error;
+
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_arch_suggest');
 

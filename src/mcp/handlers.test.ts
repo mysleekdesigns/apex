@@ -198,7 +198,8 @@ describe('MCP Handlers', () => {
       const result = await handler({});
       expect(result.isError).toBe(true);
       const text = result.content[0].text;
-      expect(text).toContain('Missing required parameter: query');
+      expect(text).toContain('Invalid input');
+      expect(text).toContain('query');
     });
   });
 
@@ -207,14 +208,16 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_record')!;
       const result = await handler({ outcome: { success: true, description: 'ok', duration: 100 } });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameter: task');
+      expect(result.content[0].text).toContain('Invalid input');
+      expect(result.content[0].text).toContain('task');
     });
 
     it('fails without outcome parameter', async () => {
       const handler = handlers.get('apex_record')!;
       const result = await handler({ task: 'test task' });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameter: outcome');
+      expect(result.content[0].text).toContain('Invalid input');
+      expect(result.content[0].text).toContain('outcome');
     });
   });
 
@@ -223,7 +226,7 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_reflect_store')!;
       const result = await handler({});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameters');
+      expect(result.content[0].text).toContain('Invalid input');
     });
   });
 
@@ -232,7 +235,8 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_plan_context')!;
       const result = await handler({});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameter: task');
+      expect(result.content[0].text).toContain('Invalid input');
+      expect(result.content[0].text).toContain('task');
     });
   });
 
@@ -241,7 +245,7 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_skill_store')!;
       const result = await handler({});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameters');
+      expect(result.content[0].text).toContain('Invalid input');
     });
   });
 
@@ -250,7 +254,8 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_promote')!;
       const result = await handler({});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameter: skillId');
+      expect(result.content[0].text).toContain('Invalid input');
+      expect(result.content[0].text).toContain('skillId');
     });
   });
 
@@ -259,7 +264,8 @@ describe('MCP Handlers', () => {
       const handler = handlers.get('apex_import')!;
       const result = await handler({});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Missing required parameter: source');
+      expect(result.content[0].text).toContain('Invalid input');
+      expect(result.content[0].text).toContain('source');
     });
   });
 
