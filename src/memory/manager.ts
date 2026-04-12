@@ -21,6 +21,8 @@ import { ProceduralMemory, type StoredSkill } from './procedural.js';
 import { StalenessDetector } from './staleness.js';
 import { SnapshotManager } from './snapshots.js';
 import { EmbeddingStore } from './embedding-store.js';
+import { MemoryTransaction } from './transaction.js';
+import { AuditLog, type AuditEntry } from './audit-log.js';
 import { FileStore } from '../utils/file-store.js';
 import { EventBus } from '../utils/event-bus.js';
 import { Logger } from '../utils/logger.js';
@@ -71,6 +73,7 @@ export class MemoryManager {
   private readonly logger: Logger;
   private readonly projectStore: FileStore;
   private readonly globalStore: FileStore | null;
+  private readonly auditLog: AuditLog;
   private readonly consolidationThreshold: number;
   private loaded = false;
 
@@ -135,6 +138,11 @@ export class MemoryManager {
       logger: new Logger({ prefix: 'apex:embeddings', level: logger['level'] }),
     });
 
+    this.auditLog = new AuditLog({
+      dataPath: opts.projectDataPath,
+      logger: new Logger({ prefix: 'apex:audit', level: logger['level'] }),
+    });
+
     this.bm25Index = new BM25Index();
 
     // Wire overflow: working -> episodic
@@ -181,6 +189,7 @@ export class MemoryManager {
   /** Record content into working memory (current session). */
   addToWorking(content: string, sourceFiles?: string[]): MemoryEntry {
     const entry = this.working.add(content, sourceFiles);
+    this.audit('record', 'working', entry.id, 'Added entry to working memory', true);
     // Auto-consolidate if threshold reached
     if (this.working.stats().count >= this.consolidationThreshold) {
       this.logger.info('Consolidation threshold reached in working memory');
@@ -191,6 +200,7 @@ export class MemoryManager {
   /** Record an episode directly into episodic memory. */
   async addToEpisodic(entry: MemoryEntry | string): Promise<MemoryEntry> {
     const result = await this.episodic.add(entry);
+    this.audit('record', 'episodic', result.id, 'Added entry to episodic memory', true);
     this.queueEmbedding(result.id, result.content);
     return result;
   }
@@ -201,6 +211,7 @@ export class MemoryManager {
     opts?: { sourceFiles?: string[]; confidence?: number },
   ): Promise<string> {
     const id = await this.semantic.add(content, opts);
+    this.audit('record', 'semantic', id, 'Added entry to semantic memory', true);
     this.queueEmbedding(id, content);
     return id;
   }
@@ -209,7 +220,9 @@ export class MemoryManager {
   async addSkill(
     data: Partial<StoredSkill> & Pick<StoredSkill, 'name' | 'description' | 'pattern'>,
   ): Promise<StoredSkill> {
-    return this.procedural.addSkill(data);
+    const skill = await this.procedural.addSkill(data);
+    this.audit('record', 'procedural', skill.id, `Added skill "${skill.name}"`, true);
+    return skill;
   }
 
   /** Record skill usage outcome. */
@@ -335,8 +348,20 @@ export class MemoryManager {
 
     const tierSizes = await this.getTierSizes();
 
-    // Auto-snapshot before consolidation
+    // Auto-snapshot before consolidation (disk-level safety net)
     await this.snapshots.autoSnapshot(tierSizes);
+
+    this.audit('consolidate', 'all', '', 'Consolidation started', true);
+
+    // Wrap the pipeline in a transaction for atomicity
+    const tx = new MemoryTransaction(
+      this.working,
+      this.episodic,
+      this.semantic,
+      this.procedural,
+      this.logger,
+    );
+    await tx.begin();
 
     const report: ConsolidationReport = {
       timestamp: Date.now(),
@@ -346,42 +371,67 @@ export class MemoryManager {
       merged: 0,
     };
 
-    // Step 1: Flush working memory to episodic
-    const workingEntries = this.working.getAll();
-    for (const entry of workingEntries) {
-      const episodicEntry: MemoryEntry = {
-        ...entry,
-        tier: 'episodic',
-      };
-      await this.episodic.add(episodicEntry);
-      report.movedToEpisodic++;
-    }
-    this.working.clear();
-
-    // Step 2: Promote high-value episodic entries to semantic
-    const allEpisodic = this.episodic.getAll();
-    const ageThresholdMs = 24 * 60 * 60 * 1000; // 1 day
-    const now = Date.now();
-    for (const entry of allEpisodic) {
-      const age = now - entry.createdAt;
-      if (entry.heatScore > 0.7 && age > ageThresholdMs) {
-        await this.semantic.add(entry.content, {
-          sourceFiles: entry.sourceFiles,
-          confidence: entry.confidence,
-        });
-        report.movedToSemantic++;
+    try {
+      // Step 1: Flush working memory to episodic
+      const workingEntries = this.working.getAll();
+      for (const entry of workingEntries) {
+        const episodicEntry: MemoryEntry = {
+          ...entry,
+          tier: 'episodic',
+        };
+        await this.episodic.add(episodicEntry);
+        this.audit('promote', 'episodic', entry.id, 'Moved from working to episodic', true);
+        report.movedToEpisodic++;
       }
+      this.working.clear();
+
+      // Step 2: Promote high-value episodic entries to semantic
+      const allEpisodic = this.episodic.getAll();
+      const ageThresholdMs = 24 * 60 * 60 * 1000; // 1 day
+      const now = Date.now();
+      for (const entry of allEpisodic) {
+        const age = now - entry.createdAt;
+        if (entry.heatScore > 0.7 && age > ageThresholdMs) {
+          const semanticId = await this.semantic.add(entry.content, {
+            sourceFiles: entry.sourceFiles,
+            confidence: entry.confidence,
+          });
+          this.audit('promote', 'semantic', semanticId, `Promoted episodic ${entry.id} to semantic`, true);
+          report.movedToSemantic++;
+        }
+      }
+
+      // Step 3: Archive low-confidence skills
+      const archived = await this.procedural.runArchival();
+      if (archived > 0) {
+        this.audit('archive', 'procedural', '', `Archived ${archived} low-confidence skills`, true);
+      }
+      report.evicted += archived;
+
+      // Persist changes
+      await this.save();
+
+      // Commit the transaction (discard checkpoint)
+      await tx.commit();
+
+      this.audit('consolidate', 'all', '', `Consolidation complete: ${report.movedToEpisodic} to episodic, ${report.movedToSemantic} to semantic, ${report.evicted} archived`, true);
+      this.eventBus.emit('memory:consolidated', report);
+      this.logger.info('Consolidation complete', report);
+    } catch (err) {
+      // Roll back to pre-consolidation state
+      this.logger.error('Consolidation failed — rolling back', { error: err });
+      this.audit('consolidate', 'all', '', `Consolidation failed: ${err instanceof Error ? err.message : String(err)}`, false);
+
+      try {
+        await tx.rollback();
+        this.audit('rollback', 'all', '', 'Rollback after failed consolidation succeeded', true);
+      } catch (rollbackErr) {
+        this.logger.error('Rollback also failed', { error: rollbackErr });
+        this.audit('rollback', 'all', '', `Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`, false);
+      }
+
+      throw err;
     }
-
-    // Step 3: Archive low-confidence skills
-    const archived = await this.procedural.runArchival();
-    report.evicted += archived;
-
-    // Persist changes
-    await this.save();
-
-    this.eventBus.emit('memory:consolidated', report);
-    this.logger.info('Consolidation complete', report);
 
     return report;
   }
@@ -454,8 +504,21 @@ export class MemoryManager {
   getStalenessDetector(): StalenessDetector { return this.staleness; }
   getSnapshotManager(): SnapshotManager { return this.snapshots; }
   getEmbeddingStore(): EmbeddingStore { return this.embeddingStore; }
+  getAuditLog(): AuditLog { return this.auditLog; }
 
   // ── Private helpers ──────────────────────────────────────────────
+
+  /** Fire-and-forget audit log entry. */
+  private audit(operation: string, tier: string, entryId: string, details: string, success: boolean): void {
+    this.auditLog.append({
+      timestamp: Date.now(),
+      operation,
+      tier,
+      entryId,
+      details,
+      success,
+    });
+  }
 
   private async ensureLoaded(): Promise<void> {
     if (!this.loaded) {
