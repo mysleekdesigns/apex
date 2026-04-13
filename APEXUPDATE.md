@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~50,200 LOC TypeScript | 979 tests | 34 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules | self-benchmarking harness | self-modification pipeline | performance-gated deployment | auto-rollback | passive telemetry | episode detection | implicit rewards | session summarization
+**Current State:** ~51,100 LOC TypeScript | 1,012 tests | 35 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules | self-benchmarking harness | self-modification pipeline | performance-gated deployment | auto-rollback | passive telemetry | episode detection | implicit rewards | session summarization | action-effect graph | causal chain extraction | counterfactual reasoning | predictive planning
 **Target State:** ~47,000 LOC | ~1,100 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -447,41 +447,49 @@
 
 ---
 
-### Phase 17: World Model / Causal Reasoning (~500 LOC, ~30 tests) [MEDIUM IMPACT]
+### Phase 17: World Model / Causal Reasoning (~930 LOC, 31 tests) [MEDIUM IMPACT] ✅ COMPLETED
 
 **Problem:** Planning is based on statistical patterns. A world model predicts action consequences -- moving from "what worked before" to "what should work given causal understanding."
 
 **Research:** NeurIPS 2025 LAW Workshop | V-JEPA 2 (Meta, 2025) | Frontiers in AI (2026)
 
+**Completed:** 2026-04-12 | 1,012 tests passing | TypeScript clean
+
+**New modules:**
+- `src/planning/world-model.ts` (~660 LOC) — WorldModel: directed action-effect graph with Bayesian edge weight updating, causal chain extraction via DFS, plan prediction with risk assessment, keyword-based chain search, FileStore persistence
+- `src/planning/counterfactual.ts` (~270 LOC) — CounterfactualEngine: "what if" scenario analysis, alternative action suggestions, strategy comparison with improvement metrics
+
+**New MCP tools:** `apex_world_model` (build, predict, chains, counterfactual, compare, stats)
+
 #### Action-Effect Graph
-- [ ] Create `src/planning/world-model.ts` -- directed graph of action -> effect relationships
-- [ ] Build graph from successful episodes (e.g., "run tests" -> "discover bugs")
-- [ ] Track edge weights (probability of effect given action)
-- [ ] Bayesian updating: adjust probabilities after each new episode
+- [x] Create `src/planning/world-model.ts` -- directed graph of action -> effect relationships
+- [x] Build graph from successful episodes (e.g., "run tests" -> "discover bugs")
+- [x] Track edge weights (probability of effect given action)
+- [x] Bayesian updating: adjust probabilities after each new episode
 
 #### Causal Chain Extraction
-- [ ] Extract causal chains from episode sequences (A enabled B which caused C)
-- [ ] Detect common causal patterns across episodes
-- [ ] Store causal chains as first-class knowledge in semantic memory
-- [ ] Surface relevant causal chains in `apex_plan_context`
+- [x] Extract causal chains from episode sequences (A enabled B which caused C)
+- [x] Detect common causal patterns across episodes
+- [x] Store causal chains as first-class knowledge in semantic memory
+- [x] Surface relevant causal chains in `apex_plan_context`
 
 #### Counterfactual Reasoning
-- [ ] Create `src/planning/counterfactual.ts` -- "what if" simulation
-- [ ] Use action-effect graph to simulate alternative action paths
-- [ ] "If I had done X instead of Y, what would have happened?"
-- [ ] Score counterfactual plans against actual outcomes
+- [x] Create `src/planning/counterfactual.ts` -- "what if" simulation
+- [x] Use action-effect graph to simulate alternative action paths
+- [x] "If I had done X instead of Y, what would have happened?"
+- [x] Score counterfactual plans against actual outcomes
 
 #### Predictive Planning
-- [ ] Before executing a plan, trace it through the world model
-- [ ] Predict likely outcomes and failure points for each step
-- [ ] Flag high-risk steps (low probability of success per world model)
-- [ ] Integrate with foresight engine in `src/reflection/foresight.ts`
+- [x] Before executing a plan, trace it through the world model
+- [x] Predict likely outcomes and failure points for each step
+- [x] Flag high-risk steps (low probability of success per world model)
+- [x] Integrate with foresight engine in `src/reflection/foresight.ts`
 
 #### Tests
-- [ ] Unit tests for action-effect graph (build, query, update)
-- [ ] Unit tests for causal chain extraction
-- [ ] Test counterfactual reasoning with known episode sequences
-- [ ] Integration test: world-model-informed planning vs baseline planning
+- [x] Unit tests for action-effect graph (build, query, update) — 19 tests
+- [x] Unit tests for causal chain extraction
+- [x] Test counterfactual reasoning with known episode sequences — 12 tests
+- [x] Integration test: world-model-informed planning vs baseline planning
 
 ---
 
@@ -580,11 +588,11 @@
 | 3 | 15 | Cognitive Architecture | ~2,476 | 46 | MEDIUM | ✅ DONE |
 | 3 | 16 | Self-Improving Agent Loop | ~650 | 30 | HIGH | ✅ DONE |
 | 3 | 20 | Real-Time Learning Signals | ~730 | 30 | MEDIUM | ✅ DONE |
-| 4 | 17 | World Model / Causal Reasoning | ~500 | ~30 | MEDIUM | |
+| 4 | 17 | World Model / Causal Reasoning | ~930 | 31 | MEDIUM | ✅ DONE |
 | 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM | |
 | 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM | |
-| | | **Completed** | **~18,959** | **596** | | **9/12** |
-| | | **Remaining** | **~1,700** | **~105** | | **3/12** |
+| | | **Completed** | **~19,889** | **627** | | **10/12** |
+| | | **Remaining** | **~1,200** | **~75** | | **2/12** |
 
 ## Key Research References
 

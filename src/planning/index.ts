@@ -56,3 +56,19 @@ export {
   type CompactionResult,
   type TreePersistenceOptions,
 } from './tree-persistence.js';
+
+export {
+  WorldModel,
+  type ActionNode,
+  type CausalEdge,
+  type CausalChain,
+  type PlanPrediction,
+  type WorldModelOptions,
+} from './world-model.js';
+
+export {
+  CounterfactualEngine,
+  type CounterfactualScenario,
+  type CounterfactualAnalysis,
+  type CounterfactualEngineOptions,
+} from './counterfactual.js';

@@ -871,4 +871,44 @@ export const tools: ToolDefinition[] = [
       required: ['action'],
     },
   },
+
+  // ── 35. apex_world_model ─────────────────────────────────────────
+  {
+    name: 'apex_world_model',
+    description:
+      'Causal reasoning via the action-effect graph. Build a world model from episode history, extract causal chains, predict plan outcomes, run counterfactual analysis ("what if"), and compare alternative strategies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['build', 'predict', 'chains', 'counterfactual', 'compare', 'stats'],
+          description: 'Action: "build" ingests episodes into the graph, "predict" forecasts plan success, "chains" shows causal patterns, "counterfactual" analyzes alternatives for an episode, "compare" evaluates two strategies, "stats" shows graph metrics.',
+        },
+        planSteps: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Action types for plan prediction or strategy comparison (for predict/compare actions).',
+        },
+        planSteps2: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Second plan for comparison (for compare action).',
+        },
+        episodeId: {
+          type: 'string',
+          description: 'Episode ID for counterfactual analysis.',
+        },
+        query: {
+          type: 'string',
+          description: 'Query for finding relevant causal chains.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results to return (default: 10).',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];

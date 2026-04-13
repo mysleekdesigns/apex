@@ -46,6 +46,8 @@ import { SelfModifier } from '../evolution/self-modify.js';
 import { TelemetryCollector } from '../integration/telemetry.js';
 import { EpisodeDetector } from '../integration/episode-detector.js';
 import { ImplicitRewardEngine } from '../integration/implicit-rewards.js';
+import { WorldModel } from '../planning/world-model.js';
+import { CounterfactualEngine } from '../planning/counterfactual.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -83,6 +85,7 @@ import {
   SelfBenchmarkSchema,
   SelfModifySchema,
   TelemetrySchema,
+  WorldModelSchema,
 } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -144,6 +147,8 @@ let selfModifier: SelfModifier | null = null;
 let telemetryCollector: TelemetryCollector | null = null;
 let episodeDetector: EpisodeDetector | null = null;
 let implicitRewardEngine: ImplicitRewardEngine | null = null;
+let worldModel: WorldModel | null = null;
+let counterfactualEngine: CounterfactualEngine | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -1425,6 +1430,25 @@ async function getOrCreateTelemetrySubsystems(projectPath?: string): Promise<{
   return { telemetry: telemetryCollector, detector: episodeDetector, rewards: implicitRewardEngine };
 }
 
+async function getOrCreateWorldModelSubsystems(projectPath?: string): Promise<{
+  model: WorldModel;
+  counterfactual: CounterfactualEngine;
+}> {
+  const root = projectPath ?? process.cwd();
+  const store = new FileStore(getProjectDataPath(root));
+  await store.init();
+
+  if (!worldModel) {
+    worldModel = new WorldModel({ fileStore: store, logger });
+    await worldModel.load();
+  }
+  if (!counterfactualEngine) {
+    counterfactualEngine = new CounterfactualEngine({ logger });
+  }
+
+  return { model: worldModel, counterfactual: counterfactualEngine };
+}
+
 async function handleArchStatus(args: Record<string, unknown>): Promise<CallToolResult> {
   const v = validateArgs(ArchStatusSchema, args);
   if (!v.success) return v.error;
@@ -2105,6 +2129,121 @@ async function handleTelemetry(args: Record<string, unknown>): Promise<CallToolR
   return fail(`unknown action: ${action}`);
 }
 
+// ── 35. apex_world_model ───────────────────────────────────────────
+
+async function handleWorldModel(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(WorldModelSchema, args);
+  if (!v.success) return v.error;
+  const { action, planSteps, planSteps2, episodeId, query, limit } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_world_model');
+
+  const { model, counterfactual } = await getOrCreateWorldModelSubsystems();
+
+  if (action === 'build') {
+    const store = new FileStore(getProjectDataPath(process.cwd()));
+    await store.init();
+    const episodeData = await store.readAll<Episode>('episodes');
+    const episodes = Object.values(episodeData);
+    model.ingestEpisodes(episodes);
+    await model.save();
+    const stats = model.getStats();
+    return ok({
+      status: 'ok',
+      message: `World model built from ${episodes.length} episodes.`,
+      stats,
+    });
+  }
+
+  if (action === 'predict') {
+    if (!planSteps || planSteps.length === 0) {
+      return fail('predict requires planSteps array');
+    }
+    const prediction = model.predictPlan(planSteps);
+    return ok({
+      status: 'ok',
+      prediction: {
+        steps: prediction.steps.map((s) => ({
+          actionType: s.actionType,
+          predictedSuccessRate: Math.round(s.predictedSuccessRate * 100) / 100,
+          riskLevel: s.riskLevel,
+        })),
+        overallSuccessRate: Math.round(prediction.overallSuccessRate * 100) / 100,
+        highRiskSteps: prediction.highRiskSteps,
+        confidence: Math.round(prediction.confidence * 100) / 100,
+      },
+    });
+  }
+
+  if (action === 'chains') {
+    const allChains = query
+      ? model.getRelevantChains(query)
+      : model.getChains();
+    const chains = allChains.slice(0, limit ?? 10);
+    return ok({
+      status: 'ok',
+      chains: chains.map((c) => ({
+        id: c.id,
+        steps: c.steps.map((s) => s.actionType),
+        frequency: c.frequency,
+        confidence: Math.round(c.confidence * 100) / 100,
+        length: c.length,
+      })),
+    });
+  }
+
+  if (action === 'counterfactual') {
+    if (!episodeId) return fail('counterfactual requires episodeId');
+    const store = new FileStore(getProjectDataPath(process.cwd()));
+    await store.init();
+    const episode = await store.read<Episode>('episodes', episodeId);
+    if (!episode) return fail(`episode ${episodeId} not found`);
+
+    const analysis = counterfactual.analyze(episode, model);
+    return ok({
+      status: 'ok',
+      analysis: {
+        episodeId: analysis.episodeId,
+        task: analysis.task,
+        originalSuccessRate: Math.round(analysis.originalSuccessRate * 100) / 100,
+        scenarioCount: analysis.scenarios.length,
+        bestAlternative: analysis.bestAlternative
+          ? {
+              step: analysis.bestAlternative.stepIndex,
+              original: analysis.bestAlternative.originalAction,
+              alternative: analysis.bestAlternative.alternativeAction,
+              improvement: `${analysis.bestAlternative.predictedOutcome.improvement.toFixed(1)}%`,
+            }
+          : null,
+      },
+    });
+  }
+
+  if (action === 'compare') {
+    if (!planSteps || !planSteps2) {
+      return fail('compare requires planSteps and planSteps2');
+    }
+    const comparison = counterfactual.compareStrategies(planSteps, planSteps2, model);
+    return ok({
+      status: 'ok',
+      comparison: {
+        plan1SuccessRate: Math.round(comparison.plan1Prediction.overallSuccessRate * 100) / 100,
+        plan2SuccessRate: Math.round(comparison.plan2Prediction.overallSuccessRate * 100) / 100,
+        recommendation: comparison.recommendation,
+        improvementPercent: Math.round(comparison.improvementPercent * 10) / 10,
+      },
+    });
+  }
+
+  if (action === 'stats') {
+    const stats = model.getStats();
+    return ok({ status: 'ok', stats });
+  }
+
+  return fail(`unknown action: ${action}`);
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -2142,4 +2281,5 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_self_benchmark', handleSelfBenchmark],
   ['apex_self_modify', handleSelfModify],
   ['apex_telemetry', handleTelemetry],
+  ['apex_world_model', handleWorldModel],
 ]);
