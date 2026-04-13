@@ -29,7 +29,7 @@ import { EventBus } from '../utils/event-bus.js';
 import { Logger } from '../utils/logger.js';
 import { getEmbedding, getEmbeddingAsync, getSemanticEmbedder, extractKeywords, simHash } from '../utils/embeddings.js';
 import { HNSWIndex } from '../utils/vector-index.js';
-import { BM25Index, hybridSearch, type HybridInput } from '../utils/similarity.js';
+import { BM25Index, hybridSearch, type HybridInput, type HybridWeights } from '../utils/similarity.js';
 import { LockManager } from '../utils/file-lock.js';
 
 // ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ export class MemoryManager {
    * Cross-tier retrieval: query all tiers, merge, rank, and tag staleness.
    * Searches project memory first, then global if available.
    */
-  async recall(query: string, topK = 10): Promise<SearchResult[]> {
+  async recall(query: string, topK = 10, weights?: HybridWeights): Promise<SearchResult[]> {
     await this.ensureLoaded();
 
     // Search all tiers in parallel
@@ -305,7 +305,7 @@ export class MemoryManager {
           embedding: queryEmbedding.embedding,
         };
 
-        const hybridResults = hybridSearch(queryInput, hybridInputs, undefined, this.bm25Index);
+        const hybridResults = hybridSearch(queryInput, hybridInputs, weights, this.bm25Index);
 
         // Re-rank merged results by hybrid score
         const scoreMap = new Map(hybridResults.map((r) => [r.id, r.score]));

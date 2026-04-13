@@ -16,7 +16,7 @@ export const tools: ToolDefinition[] = [
   {
     name: 'apex_recall',
     description:
-      'Query all memory tiers for relevant context. Searches episodic memory, reflections, and skill library to surface past experience related to the current task.',
+      'Query all memory tiers for relevant context with adaptive retrieval. Automatically classifies query intent (error-lookup, pattern-search, skill-search, planning, exploratory), expands vague queries with related terms, adjusts retrieval weights per category, and performs multi-hop retrieval when initial results are low-confidence.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -26,7 +26,7 @@ export const tools: ToolDefinition[] = [
         },
         context: {
           type: 'string',
-          description: 'Optional additional context to improve relevance',
+          description: 'Optional additional context to improve query classification and expansion',
         },
         limit: {
           type: 'number',

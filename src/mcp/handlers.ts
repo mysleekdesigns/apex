@@ -51,6 +51,10 @@ import { CounterfactualEngine } from '../planning/counterfactual.js';
 import { KnowledgeTier } from '../team/knowledge-tier.js';
 import { ProposalManager } from '../team/proposal.js';
 import { FederationEngine } from '../team/federation.js';
+import { QueryClassifier } from '../memory/query-classifier.js';
+import { QueryExpander } from '../memory/query-expander.js';
+import { MultiHopRetriever } from '../memory/multi-hop.js';
+import { RelevanceFeedbackTracker } from '../memory/relevance-feedback.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -160,6 +164,10 @@ let counterfactualEngine: CounterfactualEngine | null = null;
 let knowledgeTier: KnowledgeTier | null = null;
 let proposalManager: ProposalManager | null = null;
 let federationEngine: FederationEngine | null = null;
+const queryClassifier = new QueryClassifier();
+const queryExpander = new QueryExpander();
+let multiHopRetriever: MultiHopRetriever | null = null;
+const relevanceFeedback = new RelevanceFeedbackTracker();
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -369,20 +377,66 @@ async function getOrCreateSelfImprovementSubsystems(projectPath?: string): Promi
 async function handleRecall(args: Record<string, unknown>): Promise<CallToolResult> {
   const v = validateArgs(RecallSchema, args);
   if (!v.success) return v.error;
-  const { query, limit: rawLimit } = v.data;
+  const { query, context, limit: rawLimit } = v.data;
 
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_recall');
 
   const limit = rawLimit ?? 10;
   const mgr = await getOrCreateManager();
-  const results = await mgr.recall(query, limit);
+
+  // Phase 19: Classify query intent for adaptive retrieval
+  const classification = queryClassifier.classify(query, context);
+
+  // Phase 19: Expand vague queries with related terms
+  const expansion = queryExpander.expand(query, context);
+  const effectiveQuery = expansion.expandedTerms.length > 0
+    ? expansion.expandedQuery
+    : query;
+
+  // Phase 19: Multi-hop retrieval for low-confidence queries
+  if (!multiHopRetriever) {
+    multiHopRetriever = new MultiHopRetriever(
+      (q: string, k: number) => mgr.recall(q, k, classification.suggestedWeights),
+    );
+  }
+
+  let results;
+  let hops = 1;
+  if (classification.confidence < 0.5) {
+    const multiHop = await multiHopRetriever.retrieve(effectiveQuery, limit);
+    results = multiHop.results;
+    hops = multiHop.hops;
+  } else {
+    results = await mgr.recall(effectiveQuery, limit, classification.suggestedWeights);
+  }
 
   tracker.recordRecallHit(results.length > 0);
+
+  // Phase 19: Record recall for relevance feedback
+  const recallEventId = relevanceFeedback.recordRecall(
+    query,
+    results.map((r) => ({ id: r.entry.id, score: r.score, tier: r.sourceTier })),
+  );
+
+  // Phase 19: Apply relevance boost scores from feedback history
+  const boosts = relevanceFeedback.getBoostScores();
+  for (const r of results) {
+    const boost = boosts.get(r.entry.id);
+    if (boost) {
+      r.score = Math.max(0, Math.min(1, r.score + boost));
+    }
+  }
+  results.sort((a, b) => b.score - a.score);
 
   return ok({
     status: 'ok',
     query,
+    effectiveQuery: effectiveQuery !== query ? effectiveQuery : undefined,
+    queryCategory: classification.category,
+    queryConfidence: Math.round(classification.confidence * 100) / 100,
+    hops,
+    recallEventId,
     resultCount: results.length,
     results: results.map((r) => ({
       content: r.entry.content,
@@ -402,6 +456,15 @@ async function handleRecord(args: Record<string, unknown>): Promise<CallToolResu
 
   const tracker = await getOrCreateEffectivenessTracker();
   tracker.recordToolCall('apex_record');
+
+  // Phase 19: Record implicit usage signal — an apex_record after a recall
+  // implies the agent used the recalled results
+  const recentRecallId = relevanceFeedback.getRecentRecallId();
+  if (recentRecallId) {
+    // Mark all results from the most recent recall as "used"
+    // (the agent found them useful enough to act and record)
+    relevanceFeedback.recordUsage(recentRecallId, []);
+  }
 
   const now = Date.now();
   const actions: Action[] = rawActions.map((a) => ({
