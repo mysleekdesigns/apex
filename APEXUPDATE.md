@@ -2,7 +2,7 @@
 
 ## Making APEX the Most Advanced AI Agent Self-Learning System
 
-**Current State:** ~51,100 LOC TypeScript | 1,012 tests | 35 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules | self-benchmarking harness | self-modification pipeline | performance-gated deployment | auto-rollback | passive telemetry | episode detection | implicit rewards | session summarization | action-effect graph | causal chain extraction | counterfactual reasoning | predictive planning
+**Current State:** ~52,000 LOC TypeScript | 1,072 tests | 40 MCP tools | 4-tier memory | 3-level reflection | HNSW vector index | hybrid retrieval | benchmark suite | Zod validation | atomic file ops | concurrency locks | transaction rollback | memory bounds | Reflexion templates | verbal rewards | quality tracking | MCTS planning | LM value functions | adaptive exploration | tree persistence | DSPy-inspired prompt optimization | A/B testing | prompt mutation engine | few-shot curation | regression detection | ACT-R activation | cognitive cycle | goal stack | production rules | self-benchmarking harness | self-modification pipeline | performance-gated deployment | auto-rollback | passive telemetry | episode detection | implicit rewards | session summarization | action-effect graph | causal chain extraction | counterfactual reasoning | predictive planning | team knowledge tier | proposal-review workflow | federated learning | conflict resolution
 **Target State:** ~47,000 LOC | ~1,100 tests | 39+ MCP tools | 12 new frontier capabilities
 
 **Research Basis:** MemGPT/Letta, Reflexion, LATS (ICML 2024), DSPy, Darwin-Godel Machine, SOAR/ACT-R cognitive architectures, SWE-bench self-improving agents, NeurIPS/ICML 2024-2025 frontier work.
@@ -493,48 +493,57 @@
 
 ---
 
-### Phase 18: Advanced Multi-Agent Knowledge Sharing (~800 LOC, ~50 tests) [MEDIUM IMPACT]
+### Phase 18: Advanced Multi-Agent Knowledge Sharing (~750 LOC, 50 tests) [MEDIUM IMPACT] ✅ COMPLETED
 
 **Problem:** No mechanism for real-world team knowledge sharing. Multiple developers on the same project can't learn from each other's APEX instances.
 
 **Research:** Federated learning | CrewAI/AutoGen patterns | Git-based knowledge management
 
+**Completed:** 2026-04-12 | 1,072 tests passing | TypeScript clean
+
+**New modules:**
+- `src/team/knowledge-tier.ts` (~230 LOC) — KnowledgeTier: `.apex-shared/` directory management with categories (skills, knowledge, error-taxonomy), keyword search, changelog tracking, privacy boundary
+- `src/team/proposal.ts` (~250 LOC) — ProposalManager: propose/review/approve workflow, auto-promotion on accept, team status with contributor leaderboard
+- `src/team/federation.ts` (~270 LOC) — FederationEngine: privacy-preserving metrics aggregation, skill distribution, conflict detection with configurable precedence, Jaccard-based similarity matching
+
+**New MCP tools:** `apex_team_propose`, `apex_team_review`, `apex_team_status`, `apex_team_sync`, `apex_team_log`
+
 #### Team Knowledge Tier
-- [ ] Create `src/team/knowledge-tier.ts` -- `.apex-shared/` directory management
-- [ ] Git-tracked shared knowledge store
-- [ ] Tier structure: `skills/`, `knowledge/`, `error-taxonomy/`, `proposals/`
-- [ ] Privacy boundary: never share raw episodes, only distilled knowledge
+- [x] Create `src/team/knowledge-tier.ts` -- `.apex-shared/` directory management
+- [x] Git-tracked shared knowledge store
+- [x] Tier structure: `skills/`, `knowledge/`, `error-taxonomy/`, `proposals/`
+- [x] Privacy boundary: never share raw episodes, only distilled knowledge
 
 #### Proposal-Review Workflow
-- [ ] Create `src/team/proposal.ts` -- propose/review/approve workflow
-- [ ] `apex_team_propose`: create skill/knowledge proposal (like a PR)
-- [ ] `apex_team_review`: review pending proposals with accept/reject
-- [ ] `apex_team_status`: show team learning stats and pending proposals
-- [ ] `apex_team_sync`: ingest new `.apex-shared/` content
-- [ ] `apex_team_log`: team learning changelog
+- [x] Create `src/team/proposal.ts` -- propose/review/approve workflow
+- [x] `apex_team_propose`: create skill/knowledge proposal (like a PR)
+- [x] `apex_team_review`: review pending proposals with accept/reject
+- [x] `apex_team_status`: show team learning stats and pending proposals
+- [x] `apex_team_sync`: ingest new `.apex-shared/` content
+- [x] `apex_team_log`: team learning changelog
 
 #### MCP Tool Registration
-- [ ] Add 5 team tools to `src/mcp/tools.ts`
-- [ ] Implement handlers in `src/mcp/handlers.ts`
-- [ ] Input validation with Zod schemas
+- [x] Add 5 team tools to `src/mcp/tools.ts`
+- [x] Implement handlers in `src/mcp/handlers.ts`
+- [x] Input validation with Zod schemas
 
 #### Conflict Resolution
-- [ ] When team knowledge conflicts with personal knowledge, present both
-- [ ] Include provenance (who proposed, when, from which project)
-- [ ] Configurable precedence: team > personal or personal > team
+- [x] When team knowledge conflicts with personal knowledge, present both
+- [x] Include provenance (who proposed, when, from which project)
+- [x] Configurable precedence: team > personal or personal > team
 
 #### Federated Learning (Lite)
-- [ ] Create `src/team/federation.ts` -- privacy-preserving aggregation
-- [ ] Aggregate learning patterns without sharing raw data
-- [ ] Metrics: team-wide success rates, common error patterns, skill usage
-- [ ] Team skill leaderboard (which members' skills get most usage)
+- [x] Create `src/team/federation.ts` -- privacy-preserving aggregation
+- [x] Aggregate learning patterns without sharing raw data
+- [x] Metrics: team-wide success rates, common error patterns, skill usage
+- [x] Team skill leaderboard (which members' skills get most usage)
 
 #### Tests
-- [ ] Unit tests for knowledge tier CRUD operations
-- [ ] Unit tests for proposal workflow (create, review, accept, reject)
-- [ ] Integration test: propose skill -> review -> accept -> sync
-- [ ] Test conflict resolution with competing knowledge entries
-- [ ] Test privacy boundary (ensure episodes never leak to shared tier)
+- [x] Unit tests for knowledge tier CRUD operations (18 tests)
+- [x] Unit tests for proposal workflow (create, review, accept, reject) (18 tests)
+- [x] Integration test: propose skill -> review -> accept -> sync
+- [x] Test conflict resolution with competing knowledge entries (14 tests)
+- [x] Test privacy boundary (ensure episodes never leak to shared tier)
 
 ---
 
@@ -589,10 +598,10 @@
 | 3 | 16 | Self-Improving Agent Loop | ~650 | 30 | HIGH | ✅ DONE |
 | 3 | 20 | Real-Time Learning Signals | ~730 | 30 | MEDIUM | ✅ DONE |
 | 4 | 17 | World Model / Causal Reasoning | ~930 | 31 | MEDIUM | ✅ DONE |
-| 4 | 18 | Team Knowledge Sharing | ~800 | ~50 | MEDIUM | |
+| 4 | 18 | Team Knowledge Sharing | ~750 | 50 | MEDIUM | ✅ DONE |
 | 4 | 19 | Adaptive Query Understanding | ~400 | ~25 | MEDIUM | |
-| | | **Completed** | **~19,889** | **627** | | **10/12** |
-| | | **Remaining** | **~1,200** | **~75** | | **2/12** |
+| | | **Completed** | **~20,639** | **677** | | **11/12** |
+| | | **Remaining** | **~400** | **~25** | | **1/12** |
 
 ## Key Research References
 

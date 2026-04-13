@@ -48,6 +48,9 @@ import { EpisodeDetector } from '../integration/episode-detector.js';
 import { ImplicitRewardEngine } from '../integration/implicit-rewards.js';
 import { WorldModel } from '../planning/world-model.js';
 import { CounterfactualEngine } from '../planning/counterfactual.js';
+import { KnowledgeTier } from '../team/knowledge-tier.js';
+import { ProposalManager } from '../team/proposal.js';
+import { FederationEngine } from '../team/federation.js';
 import type { ToolDefinitionApex } from '../types.js';
 import {
   validateArgs,
@@ -86,6 +89,11 @@ import {
   SelfModifySchema,
   TelemetrySchema,
   WorldModelSchema,
+  TeamProposeSchema,
+  TeamReviewSchema,
+  TeamStatusSchema,
+  TeamSyncSchema,
+  TeamLogSchema,
 } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -149,6 +157,9 @@ let episodeDetector: EpisodeDetector | null = null;
 let implicitRewardEngine: ImplicitRewardEngine | null = null;
 let worldModel: WorldModel | null = null;
 let counterfactualEngine: CounterfactualEngine | null = null;
+let knowledgeTier: KnowledgeTier | null = null;
+let proposalManager: ProposalManager | null = null;
+let federationEngine: FederationEngine | null = null;
 const logger = new Logger({ prefix: 'apex:handlers' });
 
 function getProjectDataPath(projectPath: string): string {
@@ -1449,6 +1460,27 @@ async function getOrCreateWorldModelSubsystems(projectPath?: string): Promise<{
   return { model: worldModel, counterfactual: counterfactualEngine };
 }
 
+async function getOrCreateTeamSubsystems(projectPath?: string): Promise<{
+  tier: KnowledgeTier;
+  proposals: ProposalManager;
+  federation: FederationEngine;
+}> {
+  const root = projectPath ?? process.cwd();
+
+  if (!knowledgeTier) {
+    knowledgeTier = new KnowledgeTier({ projectPath: root, logger });
+    await knowledgeTier.init();
+  }
+  if (!proposalManager) {
+    proposalManager = new ProposalManager({ knowledgeTier, logger });
+  }
+  if (!federationEngine) {
+    federationEngine = new FederationEngine({ knowledgeTier, logger });
+  }
+
+  return { tier: knowledgeTier, proposals: proposalManager, federation: federationEngine };
+}
+
 async function handleArchStatus(args: Record<string, unknown>): Promise<CallToolResult> {
   const v = validateArgs(ArchStatusSchema, args);
   if (!v.success) return v.error;
@@ -2244,6 +2276,140 @@ async function handleWorldModel(args: Record<string, unknown>): Promise<CallTool
   return fail(`unknown action: ${action}`);
 }
 
+// ── 36. apex_team_propose ──────────────────────────────────────────
+
+async function handleTeamPropose(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TeamProposeSchema, args);
+  if (!v.success) return v.error;
+  const { title, description, category, content, tags, confidence } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_team_propose');
+
+  const { proposals } = await getOrCreateTeamSubsystems();
+  const proposal = await proposals.propose({
+    title,
+    description,
+    category,
+    content,
+    author: 'current-user',
+    sourceProject: process.cwd(),
+    tags: tags ?? [],
+    confidence: confidence ?? 0.7,
+  });
+
+  return ok({
+    status: 'ok',
+    proposal: {
+      id: proposal.id,
+      title: proposal.title,
+      category: proposal.category,
+      status: proposal.status,
+      createdAt: new Date(proposal.createdAt).toISOString(),
+    },
+  });
+}
+
+// ── 37. apex_team_review ───────────────────────────────────────────
+
+async function handleTeamReview(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TeamReviewSchema, args);
+  if (!v.success) return v.error;
+  const { proposalId, decision, comment } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_team_review');
+
+  const { proposals } = await getOrCreateTeamSubsystems();
+  const updated = await proposals.review(proposalId, decision, 'current-reviewer', comment);
+
+  return ok({
+    status: 'ok',
+    proposal: {
+      id: updated.id,
+      title: updated.title,
+      status: updated.status,
+      reviewedBy: updated.reviewedBy,
+      reviewComment: updated.reviewComment,
+    },
+  });
+}
+
+// ── 38. apex_team_status ───────────────────────────────────────────
+
+async function handleTeamStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TeamStatusSchema, args);
+  if (!v.success) return v.error;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_team_status');
+
+  const { proposals, federation } = await getOrCreateTeamSubsystems();
+  const teamStatus = await proposals.getTeamStatus();
+  const metrics = await federation.computeMetrics();
+
+  return ok({
+    status: 'ok',
+    team: {
+      proposals: {
+        pending: teamStatus.pendingProposals,
+        accepted: teamStatus.acceptedProposals,
+        rejected: teamStatus.rejectedProposals,
+        total: teamStatus.totalProposals,
+      },
+      leaderboard: metrics.leaderboard.slice(0, 5),
+      topSkillTags: metrics.topSkillTags.slice(0, 10),
+      avgConfidence: Math.round(metrics.avgTeamConfidence * 100) / 100,
+      totalContributions: metrics.totalContributions,
+      recentActivity: teamStatus.recentActivity.slice(0, 5),
+    },
+  });
+}
+
+// ── 39. apex_team_sync ─────────────────────────────────────────────
+
+async function handleTeamSync(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TeamSyncSchema, args);
+  if (!v.success) return v.error;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_team_sync');
+
+  const { proposals } = await getOrCreateTeamSubsystems();
+  const syncResult = await proposals.sync();
+
+  return ok({
+    status: 'ok',
+    sync: {
+      totalEntries: syncResult.newEntries,
+      categories: syncResult.categories,
+      message: `Team knowledge base contains ${syncResult.newEntries} shared entries.`,
+    },
+  });
+}
+
+// ── 40. apex_team_log ──────────────────────────────────────────────
+
+async function handleTeamLog(args: Record<string, unknown>): Promise<CallToolResult> {
+  const v = validateArgs(TeamLogSchema, args);
+  if (!v.success) return v.error;
+  const { limit } = v.data;
+
+  const tracker = await getOrCreateEffectivenessTracker();
+  tracker.recordToolCall('apex_team_log');
+
+  const { proposals } = await getOrCreateTeamSubsystems();
+  const log = await proposals.getLog(limit ?? 20);
+
+  return ok({
+    status: 'ok',
+    changelog: log.map((entry) => ({
+      ...entry,
+      timestamp: new Date(entry.timestamp).toISOString(),
+    })),
+  });
+}
+
 // ── Exported handler map ──────────────────────────────────────────
 
 export const handlers = new Map<string, (args: Record<string, unknown>) => Promise<CallToolResult>>([
@@ -2282,4 +2448,9 @@ export const handlers = new Map<string, (args: Record<string, unknown>) => Promi
   ['apex_self_modify', handleSelfModify],
   ['apex_telemetry', handleTelemetry],
   ['apex_world_model', handleWorldModel],
+  ['apex_team_propose', handleTeamPropose],
+  ['apex_team_review', handleTeamReview],
+  ['apex_team_status', handleTeamStatus],
+  ['apex_team_sync', handleTeamSync],
+  ['apex_team_log', handleTeamLog],
 ]);

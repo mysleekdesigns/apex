@@ -911,4 +911,74 @@ export const tools: ToolDefinition[] = [
       required: ['action'],
     },
   },
+
+  // ── 36. apex_team_propose ────────────────────────────────────────
+  {
+    name: 'apex_team_propose',
+    description:
+      'Propose a skill, knowledge entry, or error pattern for the team shared knowledge base. Creates a proposal that goes through review before being shared.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short title for the proposal.' },
+        description: { type: 'string', description: 'What this knowledge is and why it should be shared.' },
+        category: { type: 'string', enum: ['skill', 'knowledge', 'error-taxonomy'], description: 'Category of knowledge.' },
+        content: { type: 'string', description: 'The knowledge content to share.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags for categorization.' },
+        confidence: { type: 'number', description: 'Confidence in this knowledge (0-1).' },
+      },
+      required: ['title', 'description', 'category', 'content'],
+    },
+  },
+
+  // ── 37. apex_team_review ─────────────────────────────────────────
+  {
+    name: 'apex_team_review',
+    description:
+      'Review a pending team knowledge proposal. Accept or reject with an optional comment.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        proposalId: { type: 'string', description: 'ID of the proposal to review.' },
+        decision: { type: 'string', enum: ['accept', 'reject'], description: 'Accept or reject the proposal.' },
+        comment: { type: 'string', description: 'Optional review comment.' },
+      },
+      required: ['proposalId', 'decision'],
+    },
+  },
+
+  // ── 38. apex_team_status ─────────────────────────────────────────
+  {
+    name: 'apex_team_status',
+    description:
+      'Show team knowledge sharing stats: pending proposals, contributor leaderboard, skill distribution, and recent activity.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+
+  // ── 39. apex_team_sync ───────────────────────────────────────────
+  {
+    name: 'apex_team_sync',
+    description:
+      'Sync and review the team shared knowledge base. Shows what knowledge is available in .apex-shared/ and counts per category.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+
+  // ── 40. apex_team_log ────────────────────────────────────────────
+  {
+    name: 'apex_team_log',
+    description:
+      'Show the team knowledge changelog — recent proposals, reviews, and knowledge additions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Maximum entries to return (default: 20).' },
+      },
+    },
+  },
 ];

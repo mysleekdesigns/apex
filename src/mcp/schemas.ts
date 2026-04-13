@@ -1,7 +1,7 @@
 /**
  * APEX MCP Input Validation Schemas
  *
- * Zod schemas for all 35 MCP tool handlers.
+ * Zod schemas for all 40 MCP tool handlers.
  * Each schema matches the JSON Schema `inputSchema` defined in tools.ts.
  */
 
@@ -448,6 +448,54 @@ export const WorldModelSchema = z.object({
 export type WorldModelInput = z.infer<typeof WorldModelSchema>;
 
 // ---------------------------------------------------------------------------
+// 36. apex_team_propose
+// ---------------------------------------------------------------------------
+
+export const TeamProposeSchema = z.object({
+  title: z.string().min(1, 'title is required'),
+  description: z.string().min(1, 'description is required'),
+  category: z.enum(['skill', 'knowledge', 'error-taxonomy']),
+  content: z.string().min(1, 'content is required'),
+  tags: z.array(z.string()).optional(),
+  confidence: z.number().optional(),
+});
+export type TeamProposeInput = z.infer<typeof TeamProposeSchema>;
+
+// ---------------------------------------------------------------------------
+// 37. apex_team_review
+// ---------------------------------------------------------------------------
+
+export const TeamReviewSchema = z.object({
+  proposalId: z.string().min(1, 'proposalId is required'),
+  decision: z.enum(['accept', 'reject']),
+  comment: z.string().optional(),
+});
+export type TeamReviewInput = z.infer<typeof TeamReviewSchema>;
+
+// ---------------------------------------------------------------------------
+// 38. apex_team_status
+// ---------------------------------------------------------------------------
+
+export const TeamStatusSchema = z.object({});
+export type TeamStatusInput = z.infer<typeof TeamStatusSchema>;
+
+// ---------------------------------------------------------------------------
+// 39. apex_team_sync
+// ---------------------------------------------------------------------------
+
+export const TeamSyncSchema = z.object({});
+export type TeamSyncInput = z.infer<typeof TeamSyncSchema>;
+
+// ---------------------------------------------------------------------------
+// 40. apex_team_log
+// ---------------------------------------------------------------------------
+
+export const TeamLogSchema = z.object({
+  limit: z.number().optional(),
+});
+export type TeamLogInput = z.infer<typeof TeamLogSchema>;
+
+// ---------------------------------------------------------------------------
 // Schema map — keyed by tool name for dynamic lookup
 // ---------------------------------------------------------------------------
 
@@ -487,4 +535,9 @@ export const schemaMap: Record<string, z.ZodSchema> = {
   apex_self_modify: SelfModifySchema,
   apex_telemetry: TelemetrySchema,
   apex_world_model: WorldModelSchema,
+  apex_team_propose: TeamProposeSchema,
+  apex_team_review: TeamReviewSchema,
+  apex_team_status: TeamStatusSchema,
+  apex_team_sync: TeamSyncSchema,
+  apex_team_log: TeamLogSchema,
 };
