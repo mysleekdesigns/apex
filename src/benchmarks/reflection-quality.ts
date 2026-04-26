@@ -314,7 +314,7 @@ export async function runReflectionQualityBenchmark(
 ): Promise<ReflectionQualityResult> {
   const cfg: ReflectionQualityConfig = { ...DEFAULT_CONFIG, ...config };
 
-  const logger = new Logger({ prefix: 'reflection-quality-bench', silent: true });
+  const logger = new Logger({ prefix: 'reflection-quality-bench', level: 'error' });
   const semanticMemory = new SemanticMemory({ capacity: 5000, logger });
 
   // Create an in-memory FileStore stub for reflections (no disk I/O needed
